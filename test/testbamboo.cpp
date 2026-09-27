@@ -46,9 +46,10 @@ namespace {
 class FakeEditor : public InputContext {
 public:
     FakeEditor(Instance *instance, const std::string &program,
-               CapabilityFlags caps, bool reportSurrounding = true)
+               CapabilityFlags caps, bool reportSurrounding = true,
+               const char *frontend = "bambootest")
         : InputContext(instance->inputContextManager(), program),
-          reportSurrounding_(reportSurrounding) {
+          reportSurrounding_(reportSurrounding), frontend_(frontend) {
         created();
         setCapabilityFlags(caps);
         syncSurrounding();
@@ -57,7 +58,7 @@ public:
     }
     ~FakeEditor() override { destroy(); }
 
-    const char *frontend() const override { return "bambootest"; }
+    const char *frontend() const override { return frontend_; }
 
     // Returns whether fcitx filtered the key.
     bool press(const Key &key) {
@@ -86,6 +87,13 @@ public:
     void replaceText(const std::string &text) {
         text_.clear();
         commitStringImpl(text);
+    }
+
+    // Like an application reporting its text late, if at all.
+    void setReportSurrounding(bool report) { reportSurrounding_ = report; }
+    void reportText(const std::string &text) {
+        surroundingText().setText(text, utf8::length(text), utf8::length(text));
+        updateSurroundingText();
     }
 
     // Types ASCII keys one by one.
@@ -130,6 +138,7 @@ private:
 
     std::vector<uint32_t> text_;
     bool reportSurrounding_;
+    const char *frontend_;
 };
 
 const CapabilityFlags PreeditCaps{CapabilityFlag::Preedit,
@@ -321,6 +330,65 @@ void testInputModes(Instance *instance) {
     reset.setValueByPath("DefaultInputMode", "Preedit");
     reset.get("RestoreKeyStroke", true);
     bamboo->setConfig(reset);
+    clearList(bamboo, "app_modes", "AppMode");
+}
+
+// A key right after a word edits it like one being typed, once the
+// application reported the word after a key it handled itself.
+void testEditWordBeforeCursor(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "surrounding");
+    appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    bamboo->setSubConfig("app_modes", appModes);
+    for (const auto *program : {"testapp", "surrounding"}) {
+        FakeEditor editor(instance, program, PreeditCaps);
+        editor.type("vieet ");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("j ");
+        FCITX_ASSERT(editor.text() == "việt ") << program << editor.text();
+        // A click resets the input method.
+        editor.replaceText("xin chao");
+        editor.reset();
+        editor.type("f ");
+        FCITX_ASSERT(editor.text() == "xin chào ") << program << editor.text();
+        // The application did not report the last BackSpace yet.
+        editor.type("tooi ");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.setReportSurrounding(false);
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("s ");
+        FCITX_ASSERT(editor.text() == "xin chào tôs ")
+            << program << editor.text();
+    }
+    {
+        // Typing fast, a report of the word may come after the space.
+        FakeEditor editor(instance, "surrounding", PreeditCaps);
+        editor.type("toi ");
+        editor.reportText("toi");
+        editor.type("s");
+        FCITX_ASSERT(editor.text() == "toi s") << editor.text();
+    }
+    {
+        // Wayland frontends answer from a copy of the text.
+        FakeEditor editor(instance, "testapp", PreeditCaps, true, "wayland_v2");
+        editor.type("vieet ");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("j ");
+        FCITX_ASSERT(editor.text() == "viêtj ") << editor.text();
+    }
+    RawConfig config;
+    config.setValueByPath("EditWordBeforeCursor", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("vieet ");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("j ");
+        FCITX_ASSERT(editor.text() == "viêtj ") << editor.text();
+    }
+    config.setValueByPath("EditWordBeforeCursor", "True");
+    bamboo->setConfig(config);
     clearList(bamboo, "app_modes", "AppMode");
 }
 
@@ -633,6 +701,7 @@ int main() {
         testTerminalEscape(&instance);
         testSpellCheckExceptions(&instance);
         testImportMacros(&instance);
+        testEditWordBeforeCursor(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

@@ -227,6 +227,19 @@ public:
              sym == FcitxKey_Caps_Lock)) {
             return;
         }
+        // Typing fast, the application may report its text late: the word
+        // before the cursor is only trusted when reported after the last key,
+        // which the application handled itself (BackSpace, arrows).
+        const bool editWord = surroundingFresh_ && lastKeyToApp_;
+        surroundingFresh_ = false;
+        handleKey(keyEvent, restoreKey, editWord);
+        lastKeyToApp_ = !keyEvent.filtered();
+    }
+
+    void surroundingTextUpdated() { surroundingFresh_ = true; }
+
+    void handleKey(KeyEvent &keyEvent, bool restoreKey, bool editWord) {
+        const auto sym = keyEvent.rawKey().sym();
         if (pickerOpen_ && pickerKeyEvent(keyEvent)) {
             return;
         }
@@ -251,7 +264,7 @@ public:
         // Like VNIKey's vim mode: normal mode commands need plain keys.
         if (keyEvent.key().check(FcitxKey_Escape) && engine_->isTerminal(ic_)) {
             commitBuffer();
-            // Deactivating re-enters this state, touch nothing after it.
+            // Deactivating re-enters this state, process nothing after it.
             engine_->instance()->deactivate();
             return;
         }
@@ -271,6 +284,16 @@ public:
             return;
         }
 
+        // Wayland frontends answer from a copy of the text that may lag.
+        if (editWord && *engine_->config().editWordBeforeCursor &&
+            !ic_->frontendName().starts_with("wayland") &&
+            ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+            ic_->surroundingText().cursor() ==
+                ic_->surroundingText().anchor()) {
+            EngineEditWord(bambooEngine_.handle(),
+                           std::string(textBeforeCursor()).c_str(), sym,
+                           keyEvent.rawKey().states(), surrounding);
+        }
         if (EngineProcessKeyEvent(bambooEngine_.handle(), sym,
                                   keyEvent.rawKey().states(), surrounding)) {
             keyEvent.filterAndAccept();
@@ -317,6 +340,8 @@ public:
     }
 
     void reset() {
+        // A click moved the cursor, or focus came back.
+        lastKeyToApp_ = true;
         pickerOpen_ = false;
         ic_->inputPanel().reset();
         if (bambooEngine_) {
@@ -374,22 +399,23 @@ public:
     }
 
 private:
-    bool surroundingInSync() const {
-        UniqueCPtr<char> word(EngineSurroundingWord(bambooEngine_.handle()));
-        if (!word || !word.get()[0]) {
-            return true;
-        }
+    // Empty when the application reports no text.
+    std::string_view textBeforeCursor() const {
         const auto &surroundingText = ic_->surroundingText();
         const auto &text = surroundingText.text();
         const auto length = utf8::lengthValidated(text);
-        if (length == utf8::INVALID_LENGTH ||
+        if (!surroundingText.isValid() || length == utf8::INVALID_LENGTH ||
             surroundingText.cursor() > length) {
-            return false;
+            return {};
         }
-        return std::string_view(text)
-            .substr(0, utf8::ncharByteLength(text.begin(),
-                                             surroundingText.cursor()))
-            .ends_with(word.get());
+        return std::string_view(text).substr(
+            0, utf8::ncharByteLength(text.begin(), surroundingText.cursor()));
+    }
+
+    bool surroundingInSync() const {
+        UniqueCPtr<char> word(EngineSurroundingWord(bambooEngine_.handle()));
+        return !word || !word.get()[0] ||
+               textBeforeCursor().ends_with(word.get());
     }
 
     // Returns false when the key should go on as normal typing.
@@ -432,6 +458,8 @@ private:
     CGoObject bambooEngine_;
     bool pickerOpen_ = false;
     BambooInputMode lastMode_ = BambooInputMode::Preedit;
+    bool surroundingFresh_ = false;
+    bool lastKeyToApp_ = true;
 };
 
 BambooEngine::BambooEngine(Instance *instance)
@@ -549,6 +577,14 @@ BambooEngine::BambooEngine(Instance *instance)
 
     reloadConfig();
     instance_->inputContextManager().registerProperty("bambooState", &factory_);
+    eventWatchers_.emplace_back(instance_->watchEvent(
+        EventType::InputContextSurroundingTextUpdated,
+        EventWatcherPhase::PostInputMethod, [this](Event &event) {
+            static_cast<InputContextEvent &>(event)
+                .inputContext()
+                ->propertyFor(&factory_)
+                ->surroundingTextUpdated();
+        }));
 }
 
 void BambooEngine::reloadConfig() {

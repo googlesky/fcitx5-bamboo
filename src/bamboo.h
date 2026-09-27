@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <fcitx-config/iniparser.h>
 #include <fcitx-config/rawconfig.h>
+#include <fcitx-utils/handlertable.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/signals.h>
 #include <fcitx/action.h>
@@ -130,6 +131,8 @@ private:
     std::unique_ptr<SimpleAction> macroAction_;
     std::unique_ptr<SimpleAction> importMacroAction_;
     std::vector<ScopedConnection> connections_;
+    std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>>
+        eventWatchers_;
     CGoObject dictionary_;
 };
 

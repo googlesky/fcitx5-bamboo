@@ -26,6 +26,7 @@ const (
 type testApp struct {
 	e           *FcitxBambooEngine
 	surrounding bool
+	editWord    bool // like the C++ side with EditWordBeforeCursor
 	text        []rune
 }
 
@@ -38,12 +39,14 @@ func newTestApp(imName string, macros [][2]string, surrounding bool) *testApp {
 }
 
 func (a *testApp) press(keyVal, state uint32) bool {
-	var handled bool
-	if a.surrounding {
-		handled = a.e.bsProcessKeyEvent(keyVal, state)
-	} else {
-		handled = a.e.preeditProcessKeyEvent(keyVal, state)
+	if a.editWord {
+		var before = a.text
+		if len(before) > maxWordLength+1 {
+			before = before[len(before)-maxWordLength-1:]
+		}
+		a.e.editWordBeforeCursor(string(before), keyVal, state, a.surrounding)
 	}
+	var handled = a.e.processKeyEvent(keyVal, state, a.surrounding)
 	var n = a.e.takeDeleteCount()
 	if n > len(a.text) {
 		panic("deleting more than the text")
@@ -262,14 +265,16 @@ func TestModesAgree(t *testing.T) {
 	sort.Strings(ims)
 	var dict = map[string]bool{"việt": true, "tiếng": true, "tôi": true}
 	var options = []struct {
-		restore, dict, modern bool
-		charset               string
+		restore, dict, modern, editWord bool
+		charset                         string
 	}{
-		{true, false, false, "Unicode"},
-		{false, false, false, "Unicode"},
-		{true, true, true, "Unicode"},
-		{true, false, false, "TCVN3 (ABC)"},
-		{true, false, true, "VIQR"},
+		{true, false, false, false, "Unicode"},
+		{false, false, false, false, "Unicode"},
+		{true, true, true, false, "Unicode"},
+		{true, false, false, false, "TCVN3 (ABC)"},
+		{true, false, true, false, "VIQR"},
+		{true, false, false, true, "Unicode"},
+		{false, false, true, true, "Unicode"},
 	}
 	for _, im := range ims {
 		for _, o := range options {
@@ -277,6 +282,7 @@ func TestModesAgree(t *testing.T) {
 				for seed := int64(0); seed < 40; seed++ {
 					var r = rand.New(rand.NewSource(seed))
 					var p, b = newTestApp(im, macros, false), newTestApp(im, macros, true)
+					p.editWord, b.editWord = o.editWord, o.editWord
 					for _, e := range []*FcitxBambooEngine{p.e, b.e} {
 						e.autoNonVnRestore, e.spellCheckWithDicts, e.dictionary = o.restore, o.dict, dict
 						e.outputCharset = o.charset
@@ -298,6 +304,72 @@ func TestModesAgree(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A key right after a word edits it like one being typed.
+func TestEditWordBeforeCursor(t *testing.T) {
+	for _, tc := range []struct {
+		name, im, text, keys, want string
+	}{
+		{name: "tone", text: "xin chao", keys: "f", want: "xin chào"},
+		{name: "after_backspace", keys: "vieet \bj ", want: "việt "},
+		{name: "tone_moves", text: "hòa", keys: "s", want: "hóa"},
+		{name: "mark", text: "tuong", keys: "w", want: "tương"},
+		{name: "upper_case", text: "VIêt", keys: "j", want: "VIệt"},
+		{name: "after_punctuation", text: "(viet", keys: "j", want: "(viẹt"},
+		{name: "vni", im: "VNI", text: "viet", keys: "65", want: "việt"},
+		{name: "other_tone_style", text: "hoà", keys: "s", want: "hoàs"},
+		{name: "not_vietnamese", text: "hello", keys: "s", want: "hellos"},
+		{name: "longer_than_a_word", text: "xnghieng", keys: "s", want: "xnghiengs"},
+		{name: "not_a_typing_key", text: "viet", keys: "1", want: "viet1"},
+		{name: "made_up_keys_never_restored", text: "việt", keys: "f ", want: "việtf "},
+		{name: "next_word_restored", text: "việt", keys: "f class ", want: "việtf class "},
+		{name: "english_word_goes_on", text: "te", keys: "xt ", want: "text "},
+	} {
+		for _, surrounding := range []bool{false, true} {
+			var im = tc.im
+			if im == "" {
+				im = "Telex"
+			}
+			a := newTestApp(im, nil, surrounding)
+			a.editWord = true
+			a.text = []rune(tc.text)
+			a.typeString(tc.keys)
+			if got := string(a.text) + a.e.preeditText; got != tc.want {
+				t.Errorf("%s surrounding %v: got %q, want %q", tc.name, surrounding, got, tc.want)
+			}
+		}
+	}
+}
+
+// Preedit mode moves the word into the preedit, surrounding text mode
+// replaces its changed tail.
+func TestEditWordBeforeCursorOutput(t *testing.T) {
+	a := newTestApp("Telex", nil, false)
+	if n := a.e.editWordBeforeCursor("xin toi", 's', 0, false); n != 3 ||
+		a.e.takeDeleteCount() != 3 || a.e.preeditText != "toi" {
+		t.Errorf("preedit mode: took %d, preedit %q", n, a.e.preeditText)
+	}
+	a = newTestApp("Telex", nil, true)
+	a.e.editWordBeforeCursor("xin toi", 's', 0, true)
+	a.e.processKeyEvent('s', 0, true)
+	if n, commit := a.e.takeDeleteCount(), a.e.takeCommitText(); n != 2 || commit != "ói" {
+		t.Errorf("surrounding mode: deleted %d, committed %q", n, commit)
+	}
+	a = newTestApp("Telex", nil, false)
+	a.typeString("vie")
+	if a.e.editWordBeforeCursor("toi", 's', 0, false) != 0 {
+		t.Error("took a word while composing")
+	}
+	a = newTestApp("Telex", nil, false)
+	a.e.outputCharset = "TCVN3 (ABC)"
+	if a.e.editWordBeforeCursor("toi", 's', 0, false) != 0 {
+		t.Error("took a word with a legacy charset")
+	}
+	a = newTestApp("Telex", nil, false)
+	if a.e.editWordBeforeCursor("toi", 's', FcitxControlMask, false) != 0 {
+		t.Error("took a word for a shortcut")
 	}
 }
 

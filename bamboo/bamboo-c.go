@@ -57,10 +57,18 @@ func EngineProcessKeyEvent(engine uintptr, keyVal, state uint32, surrounding boo
 	if !ok {
 		return false
 	}
-	if surrounding {
-		return bambooEngine.bsProcessKeyEvent(keyVal, state)
+	return bambooEngine.processKeyEvent(keyVal, state, surrounding)
+}
+
+// Before the key: takes the word right before the cursor back into the
+// engine when the key edits it, see editWordBeforeCursor.
+//
+//export EngineEditWord
+func EngineEditWord(engine uintptr, before *C.cchar, keyVal, state uint32, surrounding bool) {
+	defer recoverPanic("EngineEditWord")
+	if bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine); ok {
+		bambooEngine.editWordBeforeCursor(C.GoString(before), keyVal, state, surrounding)
 	}
-	return bambooEngine.preeditProcessKeyEvent(keyVal, state)
 }
 
 // Whether the key belongs to the word being typed (VIQR's '~' tone key), so

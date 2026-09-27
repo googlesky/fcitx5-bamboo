@@ -27,6 +27,7 @@ type FcitxBambooEngine struct {
 	pendingCommit           string
 	pendingDelete           int
 	bsText                  string // surrounding text mode, see updatePreviousText
+	madeUpKeys              bool   // the word was typed again with them, see retype
 	shouldRestoreKeyStrokes bool
 	outputCharset           string
 }
@@ -66,6 +67,16 @@ const (
 	FcitxSpace     = 0x020
 	FcitxTab       = 0xff09
 )
+
+func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bool) bool {
+	if e.getRawKeyLen() == 0 {
+		e.madeUpKeys = false
+	}
+	if surrounding {
+		return e.bsProcessKeyEvent(keyVal, state)
+	}
+	return e.preeditProcessKeyEvent(keyVal, state)
+}
 
 func (e *FcitxBambooEngine) preeditProcessKeyEvent(keyVal uint32, state uint32) bool {
 	var rawKeyLen = e.getRawKeyLen()
@@ -141,7 +152,7 @@ func (e *FcitxBambooEngine) getBambooInputMode() bamboo.Mode {
 }
 
 func (e *FcitxBambooEngine) shouldFallbackToEnglish(checkVnRune bool) bool {
-	if !e.autoNonVnRestore {
+	if !e.autoNonVnRestore || e.madeUpKeys {
 		return false
 	}
 	var vnSeq = e.getProcessedString(bamboo.VietnameseMode | bamboo.LowerCase)
@@ -164,7 +175,7 @@ func (e *FcitxBambooEngine) shouldFallbackToEnglish(checkVnRune bool) bool {
 }
 
 func (e *FcitxBambooEngine) mustFallbackToEnglish() bool {
-	if !e.autoNonVnRestore {
+	if !e.autoNonVnRestore || e.madeUpKeys {
 		return false
 	}
 	var vnSeq = e.getProcessedString(bamboo.VietnameseMode | bamboo.LowerCase)

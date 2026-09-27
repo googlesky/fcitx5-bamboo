@@ -157,6 +157,15 @@ FCITX_CONFIGURATION(
     Option<bool> autoExcludeFields{
         this, "AutoExcludeFields",
         _("Disable Vietnamese in email, number and phone fields"), true};
+    OptionWithAnnotation<bool, ToolTipAnnotation> editWordBeforeCursor{
+        this,
+        "EditWordBeforeCursor",
+        _("Edit the word before the cursor"),
+        true,
+        {},
+        {},
+        ToolTipAnnotation(_("After BackSpace, arrows or a click, a key right "
+                            "after a word edits it like one being typed"))};
     KeyListOption inputModeSwitchKey{
         this,
         "InputModeSwitchKey",
