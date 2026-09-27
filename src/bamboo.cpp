@@ -92,6 +92,16 @@ std::vector<std::filesystem::path> macroImportFiles() {
     return files;
 }
 
+// At a field or line start, or after '.', '!' or '?' and spaces.
+bool startsSentence(std::string_view text) {
+    const auto end = text.find_last_not_of(" \t");
+    if (end == std::string_view::npos || text[end] == '\n') {
+        return true;
+    }
+    return end + 1 < text.size() &&
+           std::string_view(".!?").find(text[end]) != std::string_view::npos;
+}
+
 // Normalization drops Shift from "~", accept keys saved either way.
 bool checkHotkey(const KeyEvent &keyEvent, const KeyList &keys) {
     return keyEvent.key().checkKeyList(keys) ||
@@ -232,18 +242,22 @@ public:
              sym == FcitxKey_Caps_Lock)) {
             return;
         }
-        // Typing fast, the application may report its text late: the word
-        // before the cursor is only trusted when reported after the last key,
-        // which the application handled itself (BackSpace, arrows).
-        const bool editWord = surroundingFresh_ && lastKeyToApp_;
+        // VIQR types tones with '.' and '?', they end no sentence then.
+        const bool typingKey = EngineIsTypingKey(bambooEngine_.handle(), sym,
+                                                 keyEvent.rawKey().states());
+        // Typing fast, the application may report its text late: its text is
+        // only trusted when reported after the last key.
+        const bool fresh = surroundingFresh_;
         surroundingFresh_ = false;
-        handleKey(keyEvent, restoreKey, editWord);
+        handleKey(keyEvent, restoreKey, fresh);
         lastKeyToApp_ = !keyEvent.filtered();
+        sentenceKeys_ =
+            typingKey ? SentenceKeys::Other : nextSentenceKeys(keyEvent.key());
     }
 
     void surroundingTextUpdated() { surroundingFresh_ = true; }
 
-    void handleKey(KeyEvent &keyEvent, bool restoreKey, bool editWord) {
+    void handleKey(KeyEvent &keyEvent, bool restoreKey, bool fresh) {
         const auto sym = keyEvent.rawKey().sym();
         if (pickerOpen_ && pickerKeyEvent(keyEvent)) {
             return;
@@ -289,8 +303,11 @@ public:
             return;
         }
 
-        // Wayland frontends answer from a copy of the text that may lag.
-        if (editWord && *engine_->config().editWordBeforeCursor &&
+        // The word before the cursor is only edited after a key the
+        // application handled itself (BackSpace, arrows): typing fast, our
+        // own text may not be reported yet. Wayland frontends answer from a
+        // copy of the text that may lag.
+        if (fresh && lastKeyToApp_ && *engine_->config().editWordBeforeCursor &&
             !ic_->frontendName().starts_with("wayland") &&
             ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
             ic_->surroundingText().cursor() ==
@@ -299,7 +316,11 @@ public:
                            std::string(textBeforeCursor()).c_str(), sym,
                            keyEvent.rawKey().states(), surrounding);
         }
-        if (EngineProcessKeyEvent(bambooEngine_.handle(), sym,
+        const auto typed =
+            capitalize(sym, keyEvent.rawKey().states(), fresh)
+                ? static_cast<KeySym>(sym - FcitxKey_a + FcitxKey_A)
+                : sym;
+        if (EngineProcessKeyEvent(bambooEngine_.handle(), typed,
                                   keyEvent.rawKey().states(), surrounding)) {
             keyEvent.filterAndAccept();
         }
@@ -347,6 +368,7 @@ public:
     void reset() {
         // A click moved the cursor, or focus came back.
         lastKeyToApp_ = true;
+        sentenceKeys_ = SentenceKeys::Other;
         pickerOpen_ = false;
         ic_->inputPanel().reset();
         if (bambooEngine_) {
@@ -404,6 +426,53 @@ public:
     }
 
 private:
+    // Keys since a sentence ended: '.', '!' or '?', then spaces or Return.
+    enum class SentenceKeys { Other, End, Start };
+
+    SentenceKeys nextSentenceKeys(const Key &key) const {
+        if (key.states().testAny(
+                KeyStates{KeyState::Ctrl, KeyState::Alt, KeyState::Super})) {
+            return SentenceKeys::Other;
+        }
+        switch (key.sym()) {
+        case FcitxKey_period:
+        case FcitxKey_exclam:
+        case FcitxKey_question:
+            return SentenceKeys::End;
+        case FcitxKey_space:
+            return sentenceKeys_ == SentenceKeys::Other ? SentenceKeys::Other
+                                                        : SentenceKeys::Start;
+        case FcitxKey_Return:
+        case FcitxKey_KP_Enter:
+            return SentenceKeys::Start;
+        default:
+            return SentenceKeys::Other;
+        }
+    }
+
+    // A lowercase letter starting a word at the start of a sentence. The
+    // application's text tells it best, then the keys typed.
+    bool capitalize(KeySym sym, KeyStates states, bool fresh) const {
+        if (!*engine_->config().capitalizeSentences || sym < FcitxKey_a ||
+            sym > FcitxKey_z ||
+            states.testAny(
+                KeyStates{KeyState::Ctrl, KeyState::Alt, KeyState::Super}) ||
+            engine_->isTerminal(ic_) ||
+            ic_->capabilityFlags().testAny(CapabilityFlags{
+                CapabilityFlag::NoAutoUpperCase, CapabilityFlag::Url}) ||
+            EngineIsTypingKey(bambooEngine_.handle(), sym, states)) {
+            return false;
+        }
+        const auto &surroundingText = ic_->surroundingText();
+        if (fresh &&
+            ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+            surroundingText.isValid() &&
+            surroundingText.cursor() == surroundingText.anchor()) {
+            return startsSentence(textBeforeCursor());
+        }
+        return sentenceKeys_ == SentenceKeys::Start;
+    }
+
     // Empty when the application reports no text.
     std::string_view textBeforeCursor() const {
         const auto &surroundingText = ic_->surroundingText();
@@ -465,6 +534,7 @@ private:
     BambooInputMode lastMode_ = BambooInputMode::Preedit;
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
+    SentenceKeys sentenceKeys_ = SentenceKeys::Other;
 };
 
 BambooEngine::BambooEngine(Instance *instance)

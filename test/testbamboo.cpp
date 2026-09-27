@@ -435,6 +435,72 @@ void testQuickTyping(Instance *instance) {
     }
 }
 
+void testCapitalizeSentences(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig config;
+    config.setValueByPath("CapitalizeSentences", "True");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("xin chaof. tooi ddi");
+        editor.press(Key(FcitxKey_Return));
+        editor.type("abc! hey? ghi ");
+        FCITX_ASSERT(editor.text() == "Xin chào. Tôi đi\nAbc! Hey? Ghi ")
+            << editor.text();
+        editor.replaceText("");
+        editor.type("vnexpress.net ");
+        FCITX_ASSERT(editor.text() == "Vnexpress.net ") << editor.text();
+    }
+    {
+        // Without its text, keys tell a sentence start, not a field start.
+        FakeEditor editor(instance, "testapp",
+                          CapabilityFlags{CapabilityFlag::Preedit});
+        editor.type("abc. hey ghi");
+        FCITX_ASSERT(editor.text() + editor.preedit() == "abc. Hey ghi")
+            << editor.text();
+        // A click may have moved the cursor anywhere.
+        editor.type(". ");
+        editor.reset();
+        editor.type("jkl ");
+        FCITX_ASSERT(editor.text() == "abc. Hey ghi. jkl ") << editor.text();
+    }
+    {
+        // A text reported late is not trusted.
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("abc. ");
+        editor.setReportSurrounding(false);
+        editor.type("hey ghi ");
+        FCITX_ASSERT(editor.text() == "Abc. Hey ghi ") << editor.text();
+    }
+    for (const auto flag :
+         {CapabilityFlag::Terminal, CapabilityFlag::NoAutoUpperCase}) {
+        FakeEditor editor(instance, "testapp",
+                          CapabilityFlags{CapabilityFlag::Preedit,
+                                          CapabilityFlag::SurroundingText,
+                                          flag});
+        editor.type("abc. hey ");
+        FCITX_ASSERT(editor.text() == "abc. hey ") << editor.text();
+    }
+    config.setValueByPath("InputMethod", "VIQR");
+    bamboo->setConfig(config);
+    {
+        // VIQR types tones with '.' and '?'.
+        FakeEditor editor(instance, "testapp",
+                          CapabilityFlags{CapabilityFlag::Preedit});
+        editor.type("ma. ba? ca");
+        FCITX_ASSERT(editor.text() + editor.preedit() == "mạ bả ca")
+            << editor.text();
+    }
+    config.setValueByPath("InputMethod", "Telex");
+    config.setValueByPath("CapitalizeSentences", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("abc. hey ");
+        FCITX_ASSERT(editor.text() == "abc. hey ") << editor.text();
+    }
+}
+
 bool hasImportAction(Instance *instance, InputContext *ic) {
     auto *action =
         instance->userInterfaceManager().lookupAction("bamboo-import-macro");
@@ -747,6 +813,7 @@ int main() {
         testEditWordBeforeCursor(&instance);
         testStandaloneW(&instance);
         testQuickTyping(&instance);
+        testCapitalizeSentences(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

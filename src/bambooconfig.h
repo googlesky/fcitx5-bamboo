@@ -124,7 +124,8 @@ FCITX_CONFIGURATION(
         false,
         {},
         {},
-        ToolTipAnnotation(_("Escape switches to English, as vim needs"))};);
+        ToolTipAnnotation(_("Escape switches to English, as vim needs, and "
+                            "sentences are not capitalized"))};);
 
 FCITX_CONFIGURATION(BambooAppModeList,
                     OptionWithAnnotation<std::vector<BambooAppMode>,
@@ -180,6 +181,9 @@ FCITX_CONFIGURATION(
     Option<bool> autoExcludeFields{
         this, "AutoExcludeFields",
         _("Disable Vietnamese in email, number and phone fields"), true};
+    Option<bool> capitalizeSentences{
+        this, "CapitalizeSentences",
+        _("Capitalize the first letter of sentences"), false};
     OptionWithAnnotation<bool, ToolTipAnnotation> editWordBeforeCursor{
         this,
         "EditWordBeforeCursor",
