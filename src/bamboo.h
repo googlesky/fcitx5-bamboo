@@ -70,8 +70,12 @@ public:
     const auto &config() const { return config_; }
     const auto &customKeymap() const { return customKeymap_; }
     BambooInputMode inputMode(const std::string &program) const;
+    // Terminals and code editors, where Escape switches to English.
+    bool isTerminal(const InputContext *ic) const;
     // Remembers the typing mode of the program of ic.
     void setInputMode(InputContext *ic, BambooInputMode mode);
+
+    Instance *instance() { return instance_; }
 
     void reloadConfig() override;
     const Configuration *getConfig() const override { return &config_; }
@@ -103,6 +107,8 @@ public:
     void populateConfig();
 
 private:
+    const BambooAppMode *appMode(const std::string &program) const;
+
     Instance *instance_;
     BambooConfig config_;
     BambooCustomKeymap customKeymap_;

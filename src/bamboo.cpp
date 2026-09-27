@@ -216,6 +216,13 @@ public:
         if (mode == BambooInputMode::Exclude) {
             return;
         }
+        // Like VNIKey's vim mode: normal mode commands need plain keys.
+        if (keyEvent.key().check(FcitxKey_Escape) && engine_->isTerminal(ic_)) {
+            commitBuffer();
+            // Deactivating re-enters this state, touch nothing after it.
+            engine_->instance()->deactivate();
+            return;
+        }
         const bool surrounding = mode == BambooInputMode::SurroundingText;
         // The application changed the word (autocorrection, stale surrounding
         // text): start a new word rather than delete what is not ours.
@@ -571,15 +578,26 @@ void BambooEngine::setSubConfig(const std::string &path,
     }
 }
 
-BambooInputMode BambooEngine::inputMode(const std::string &program) const {
-    if (!program.empty()) {
-        for (const auto &appMode : *appModes_.appModes) {
-            if (*appMode.program == program) {
-                return *appMode.mode;
-            }
-        }
+const BambooAppMode *BambooEngine::appMode(const std::string &program) const {
+    if (program.empty()) {
+        return nullptr;
     }
-    return *config_.inputMode;
+    const auto &appModes = *appModes_.appModes;
+    auto iter = std::ranges::find_if(appModes, [&program](const auto &appMode) {
+        return *appMode.program == program;
+    });
+    return iter == appModes.end() ? nullptr : &*iter;
+}
+
+BambooInputMode BambooEngine::inputMode(const std::string &program) const {
+    const auto *entry = appMode(program);
+    return entry ? *entry->mode : *config_.inputMode;
+}
+
+bool BambooEngine::isTerminal(const InputContext *ic) const {
+    const auto *entry = appMode(ic->program());
+    return ic->capabilityFlags().test(CapabilityFlag::Terminal) ||
+           (entry && *entry->terminal);
 }
 
 void BambooEngine::setInputMode(InputContext *ic, BambooInputMode mode) {

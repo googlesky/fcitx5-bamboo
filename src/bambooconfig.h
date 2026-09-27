@@ -116,7 +116,15 @@ FCITX_CONFIGURATION(
     BambooAppMode,
     Option<std::string> program{this, "Program", _("Program"), ""};
     OptionWithAnnotation<BambooInputMode, BambooInputModeI18NAnnotation> mode{
-        this, "Mode", _("Typing Mode"), BambooInputMode::Preedit};);
+        this, "Mode", _("Typing Mode"), BambooInputMode::Preedit};
+    OptionWithAnnotation<bool, ToolTipAnnotation> terminal{
+        this,
+        "Terminal",
+        _("Terminal or code editor"),
+        false,
+        {},
+        {},
+        ToolTipAnnotation(_("Escape switches to English, as vim needs"))};);
 
 FCITX_CONFIGURATION(BambooAppModeList,
                     OptionWithAnnotation<std::vector<BambooAppMode>,

@@ -66,7 +66,8 @@ public:
             text_.push_back('\n');
         } else if (!key.states().testAny(KeyStates{
                        KeyState::Ctrl, KeyState::Alt, KeyState::Super})) {
-            if (auto chr = Key::keySymToUnicode(key.sym())) {
+            // Control characters like Escape's are not typed.
+            if (auto chr = Key::keySymToUnicode(key.sym()); chr >= 0x20) {
                 text_.push_back(chr);
             }
         }
@@ -316,6 +317,47 @@ void testInputModes(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+// In terminals and code editors Escape leaves Vietnamese, like VNIKey's vim
+// mode: vim's normal mode needs plain keys.
+void testTerminalEscape(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "vimapp");
+    appModes.setValueByPath("AppMode/0/Mode", "Preedit");
+    appModes.setValueByPath("AppMode/0/Terminal", "True");
+    bamboo->setSubConfig("app_modes", appModes);
+    {
+        FakeEditor editor(instance, "vimapp", PreeditCaps);
+        editor.type("vieetj");
+        FCITX_ASSERT(!editor.press(Key(FcitxKey_Escape)));
+        FCITX_ASSERT(editor.text() == "việt") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        FCITX_ASSERT(instance->inputMethod(&editor) == "keyboard-us");
+        editor.type("dd");
+        FCITX_ASSERT(editor.text() == "việtdd") << editor.text();
+    }
+    {
+        FakeEditor editor(instance, "vimapp", PreeditCaps);
+        FCITX_ASSERT(!editor.press(Key(FcitxKey_Escape)));
+        FCITX_ASSERT(instance->inputMethod(&editor) == "keyboard-us");
+    }
+    {
+        // Terminals reported by the application itself.
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Terminal);
+        FCITX_ASSERT(!editor.press(Key(FcitxKey_Escape)));
+        FCITX_ASSERT(instance->inputMethod(&editor) == "keyboard-us");
+    }
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("vieetj");
+        FCITX_ASSERT(!editor.press(Key(FcitxKey_Escape)));
+        FCITX_ASSERT(editor.text() == "việt") << editor.text();
+        FCITX_ASSERT(instance->inputMethod(&editor) == "bamboo");
+    }
+    clearList(bamboo, "app_modes", "AppMode");
+}
+
 // The panel shows EN whenever keys go straight to the application.
 void testModeLabel(Instance *instance) {
     auto *bamboo = instance->addonManager().addon("bamboo");
@@ -513,6 +555,7 @@ int main() {
         testInputModePicker(&instance);
         testFieldHints(&instance);
         testModeLabel(&instance);
+        testTerminalEscape(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });
