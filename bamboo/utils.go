@@ -44,3 +44,11 @@ func inKeyList(list []rune, key rune) bool {
 	}
 	return false
 }
+
+func removeDiacritics(text string) string {
+	var runes = []rune(text)
+	for i, r := range runes {
+		runes[i] = bamboo.AddMarkToTonelessChar(bamboo.AddToneToChar(r, 0), 0)
+	}
+	return string(runes)
+}

@@ -218,6 +218,23 @@ func TestSurroundingEngine(t *testing.T) {
 	}
 }
 
+// Proper nouns and jargon the spell check would restore to keys.
+func TestSpellCheckExceptions(t *testing.T) {
+	for _, surrounding := range []bool{false, true} {
+		a := newTestApp("Telex", nil, surrounding)
+		a.typeString("Kroong ")
+		if string(a.text) != "Kroong " {
+			t.Errorf("surrounding %v: without exception %q", surrounding, string(a.text))
+		}
+		a = newTestApp("Telex", nil, surrounding)
+		a.e.spellCheckExceptions = []string{"krông"}
+		a.typeString("Kroong KROONG Kroongs text ")
+		if string(a.text) != "Krông KRÔNG Kroongs text " {
+			t.Errorf("surrounding %v: with exception %q", surrounding, string(a.text))
+		}
+	}
+}
+
 // Ctrl+BackSpace deletes a whole word in the application, it must end the
 // word like any other shortcut.
 func TestControlBackSpaceEndsWord(t *testing.T) {

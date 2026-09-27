@@ -20,6 +20,7 @@ import (
 			const char *outputCharset;
 			bool modernStyle;
 			bool freeMarking;
+			char **spellCheckExceptions;
 		} FcitxBambooEngineOption;
 	*/
 	"C"
@@ -170,6 +171,15 @@ func EngineSetOption(engine uintptr, option *C.FcitxBambooEngineOption) {
 	bambooEngine.autoCapitalizeMacro = bool(option.autoCapitalizeMacro)
 	bambooEngine.spellCheckWithDicts = bool(option.spellCheckWithDicts)
 	bambooEngine.outputCharset = C.GoString(option.outputCharset)
+	bambooEngine.spellCheckExceptions = nil
+	if option.spellCheckExceptions != nil {
+		words := (*[1<<20 - 1]*C.char)(unsafe.Pointer(option.spellCheckExceptions))
+		for i := 0; words[i] != nil; i++ {
+			if word := strings.ToLower(strings.TrimSpace(C.GoString(words[i]))); word != "" {
+				bambooEngine.spellCheckExceptions = append(bambooEngine.spellCheckExceptions, word)
+			}
+		}
+	}
 	flags := bamboo.EstdFlags
 	if option.modernStyle {
 		flags &= ^bamboo.EstdToneStyle

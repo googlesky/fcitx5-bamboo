@@ -144,6 +144,11 @@ public:
         if (!bambooEngine_) {
             return;
         }
+        std::vector<char *> exceptions;
+        for (const auto &word : *engine_->config().spellCheckExceptions) {
+            exceptions.push_back(const_cast<char *>(word.data()));
+        }
+        exceptions.push_back(nullptr);
         FcitxBambooEngineOption option = {
             .autoNonVnRestore = *engine_->config().autoNonVnRestore,
             .ddFreeStyle = true,
@@ -153,6 +158,7 @@ public:
             .outputCharset = engine_->config().outputCharset->data(),
             .modernStyle = *engine_->config().modernStyle,
             .freeMarking = *engine_->config().freeMarking,
+            .spellCheckExceptions = exceptions.data(),
         };
         EngineSetOption(bambooEngine_.handle(), &option);
     }

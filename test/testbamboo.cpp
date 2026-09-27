@@ -317,6 +317,21 @@ void testInputModes(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+void testSpellCheckExceptions(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig config;
+    config.setValueByPath("SpellCheckExceptions/0", "Krông");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("Kroong text ");
+        FCITX_ASSERT(editor.text() == "Krông text ") << editor.text();
+    }
+    RawConfig reset;
+    reset.get("SpellCheckExceptions", true);
+    bamboo->setConfig(reset);
+}
+
 // In terminals and code editors Escape leaves Vietnamese, like VNIKey's vim
 // mode: vim's normal mode needs plain keys.
 void testTerminalEscape(Instance *instance) {
@@ -556,6 +571,7 @@ int main() {
         testFieldHints(&instance);
         testModeLabel(&instance);
         testTerminalEscape(&instance);
+        testSpellCheckExceptions(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

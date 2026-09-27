@@ -22,6 +22,7 @@ type FcitxBambooEngine struct {
 	autoCapitalizeMacro     bool
 	lastKeyWithShift        bool
 	spellCheckWithDicts     bool
+	spellCheckExceptions    []string // lower case
 	preeditText             string
 	pendingCommit           string
 	pendingDelete           int
@@ -145,7 +146,7 @@ func (e *FcitxBambooEngine) shouldFallbackToEnglish(checkVnRune bool) bool {
 	}
 	var vnSeq = e.getProcessedString(bamboo.VietnameseMode | bamboo.LowerCase)
 	var vnRunes = []rune(vnSeq)
-	if len(vnRunes) == 0 {
+	if len(vnRunes) == 0 || e.isSpellCheckException(vnSeq, false) {
 		return false
 	}
 	if ok, _ := e.getMacroText(); ok {
@@ -168,7 +169,7 @@ func (e *FcitxBambooEngine) mustFallbackToEnglish() bool {
 	}
 	var vnSeq = e.getProcessedString(bamboo.VietnameseMode | bamboo.LowerCase)
 	var vnRunes = []rune(vnSeq)
-	if len(vnRunes) == 0 {
+	if len(vnRunes) == 0 || e.isSpellCheckException(vnSeq, true) {
 		return false
 	}
 	// we want to allow dd even in non-vn sequence, because dd is used a lot in abbreviation
@@ -179,6 +180,18 @@ func (e *FcitxBambooEngine) mustFallbackToEnglish() bool {
 		return !e.dictionary[vnSeq]
 	}
 	return !e.preeditor.IsValid(true)
+}
+
+// Words the user keeps whatever the spell check says. A complete word must
+// match exactly; while typing, a beginning without tones and marks does, as
+// "kro" is typed before "krô".
+func (e *FcitxBambooEngine) isSpellCheckException(vnSeq string, complete bool) bool {
+	for _, word := range e.spellCheckExceptions {
+		if word == vnSeq || !complete && strings.HasPrefix(removeDiacritics(word), removeDiacritics(vnSeq)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *FcitxBambooEngine) getComposedString(oldText string) string {

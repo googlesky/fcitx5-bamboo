@@ -169,6 +169,8 @@ FCITX_CONFIGURATION(
                                   _("Enable spell check"), true};
     Option<bool> spellCheck{this, "SpellCheck",
                             _("Use dictionary for spell check"), false};
+    Option<std::vector<std::string>> spellCheckExceptions{
+        this, "SpellCheckExceptions", _("Words kept by spell check"), {}};
     Option<bool> macro{this, "Macro", _("Enable Macro"), false};
     Option<bool> capitalizeMacro{this, "CapitalizeMacro", _("Capitalize Macro"),
                                  true};
