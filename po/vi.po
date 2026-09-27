@@ -262,3 +262,11 @@ msgstr "Văn bản quá dài để chuyển đổi"
 #: src/bambooconfig.h
 msgid "Escape switches to English in terminals and code editors"
 msgstr "Esc chuyển sang tiếng Anh trong terminal và trình soạn code"
+
+#: src/bambooconfig.h
+msgid "Surrounding Text in Wayland apps without text: edit with BackSpace"
+msgstr "Sửa lỗi gạch chân ở app Wayland không có text: sửa bằng BackSpace"
+
+#: src/bambooconfig.h
+msgid "Terminals typing through KWin get the word as text instead of in the input method window"
+msgstr "Terminal gõ qua KWin nhận chữ trực tiếp thay vì hiện trong cửa sổ bộ gõ"

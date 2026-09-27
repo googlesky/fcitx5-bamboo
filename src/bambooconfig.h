@@ -181,6 +181,15 @@ FCITX_CONFIGURATION(
     Option<bool> autoExcludeFields{
         this, "AutoExcludeFields",
         _("Disable Vietnamese in email, number and phone fields"), true};
+    OptionWithAnnotation<bool, ToolTipAnnotation> waylandBackSpace{
+        this,
+        "WaylandBackSpace",
+        _("Surrounding Text in Wayland apps without text: edit with BackSpace"),
+        false,
+        {},
+        {},
+        ToolTipAnnotation(_("Terminals typing through KWin get the word as "
+                            "text instead of in the input method window"))};
     Option<bool> terminalEscape{
         this, "TerminalEscape",
         _("Escape switches to English in terminals and code editors"), true};

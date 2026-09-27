@@ -20,11 +20,18 @@ Features following ibus-bamboo:
 - Typing modes, remembered per application. Press ~ to choose the mode of
   the current application (press it twice to type ~):
   1. Preedit: the word being typed is shown as preedit.
-  2. Surrounding Text: no preedit, the word is fixed in place through the
-     application's surrounding text (GTK applications, Wayland applications
-     that report it). Elsewhere, Qt applications included, and whenever the
-     text around the cursor is not what was typed, it falls back to preedit
-     or starts a new word instead of deleting text.
+  2. Surrounding Text ("sửa lỗi gạch chân"): the word is never underlined.
+     Where the application reports the text around the cursor (GTK
+     applications, Firefox, Wayland applications) the word is typed and
+     fixed in place; when that text is not what was typed, a new word starts
+     instead of deleting text. Qt applications show the word as preedit
+     without underline, since fcitx5-qt reports its text now and then only.
+     Elsewhere (Chromium, Electron and CEF applications on XWayland draw an
+     underline under any preedit, terminals) the word shows in fcitx5's
+     window. Run Chromium and Electron applications on Wayland
+     (--ozone-platform=wayland --enable-wayland-ime) to type in place. Option
+     WaylandBackSpace types into Wayland terminals through KWin with
+     BackSpace keys, off by default.
   3. Exclude: no Vietnamese in this application.
   The default mode, the per application list and the key are in the
   configuration.

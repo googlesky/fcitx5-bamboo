@@ -16,6 +16,7 @@
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/macros.h>
 #include <fcitx-utils/testing.h>
+#include <fcitx-utils/textformatflags.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
@@ -117,6 +118,8 @@ public:
         return result;
     }
     std::string preedit() { return inputPanel().clientPreedit().toString(); }
+    // Preedit shown in fcitx5's window.
+    std::string panelPreedit() { return inputPanel().preedit().toString(); }
 
 protected:
     void commitStringImpl(const std::string &str) override {
@@ -130,12 +133,24 @@ protected:
         syncSurrounding();
     }
     void deleteSurroundingTextImpl(int offset, unsigned int size) override {
+        // Wayland frontends delete through their copy of the text.
+        if (std::string_view(frontend_).starts_with("wayland") &&
+            !reportSurrounding_) {
+            return;
+        }
         FCITX_ASSERT(offset == -static_cast<int>(size) && size <= text_.size())
             << "bad delete " << offset << " " << size << " on " << text();
         text_.resize(text_.size() - size);
         syncSurrounding();
     }
-    void forwardKeyImpl(const ForwardKeyEvent & /*event*/) override {}
+    // Like KWin handing a forwarded key to the application.
+    void forwardKeyImpl(const ForwardKeyEvent &event) override {
+        if (!event.isRelease() && event.rawKey().check(FcitxKey_BackSpace) &&
+            !text_.empty()) {
+            text_.pop_back();
+            syncSurrounding();
+        }
+    }
     void updatePreeditImpl() override {}
 
 private:
@@ -280,19 +295,21 @@ void testInputModes(Instance *instance) {
         FCITX_ASSERT(editor.text() == "tiếng việt hòa tooi") << editor.text();
     }
     {
-        // Without surrounding text support, fall back to the preedit.
+        // Without surrounding text support the word shows in fcitx5's
+        // window: Chromium and the like underline any preedit.
         FakeEditor editor(instance, "surrounding",
                           CapabilityFlags{CapabilityFlag::Preedit});
         editor.type("tieengs");
-        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+        FCITX_ASSERT(editor.panelPreedit() == "tiếng") << editor.panelPreedit();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
         FCITX_ASSERT(editor.text().empty()) << editor.text();
     }
     {
         // Wayland frontends claim surrounding text for every client, a
-        // client that sends none must get the preedit.
+        // client that sends none gets the word in fcitx5's window too.
         FakeEditor editor(instance, "surrounding", PreeditCaps, false);
         editor.type("tieengs");
-        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+        FCITX_ASSERT(editor.panelPreedit() == "tiếng") << editor.panelPreedit();
         FCITX_ASSERT(editor.text().empty()) << editor.text();
     }
     {
@@ -304,12 +321,14 @@ void testInputModes(Instance *instance) {
         FCITX_ASSERT(editor.text() == "txo") << editor.text();
     }
     {
-        // A word ends in the mode it started in.
+        // A word ends the way it started: the application's text is not
+        // edited once its surrounding text is gone.
         FakeEditor editor(instance, "surrounding", PreeditCaps);
         editor.type("to");
         editor.setCapabilityFlags(CapabilityFlags{CapabilityFlag::Preedit});
         editor.type("o");
-        FCITX_ASSERT(editor.preedit() == "o") << editor.preedit();
+        FCITX_ASSERT(editor.text() == "to") << editor.text();
+        FCITX_ASSERT(editor.panelPreedit() == "o") << editor.panelPreedit();
         editor.press(Key(FcitxKey_Return));
         FCITX_ASSERT(editor.text() == "too\n") << editor.text();
     }
@@ -613,6 +632,69 @@ void testConvert(Instance *instance) {
     FCITX_ASSERT(editor.press(convertKey) && list());
     editor.press(Key(FcitxKey_2));
     FCITX_ASSERT(editor.text() == "123 VIỆT") << editor.text();
+}
+
+// Surrounding Text mode never underlines the word being typed.
+void testNoUnderline(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "surrounding");
+    appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    bamboo->setSubConfig("app_modes", appModes);
+    RawConfig config;
+    config.setValueByPath("DisplayUnderline", "True");
+    bamboo->setConfig(config);
+    const auto underlined = [](FakeEditor &editor) {
+        return editor.inputPanel().clientPreedit().formatAt(0).test(
+            TextFormatFlag::Underline);
+    };
+    {
+        // Preedit mode keeps the underline asked for.
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng" && underlined(editor));
+    }
+    {
+        // Qt draws the preedit as told: plain, whatever its surrounding text
+        // does.
+        FakeEditor editor(instance, "surrounding",
+                          PreeditCaps | CapabilityFlag::GetIMInfoOnFocus);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng" && !underlined(editor))
+            << editor.preedit();
+        FCITX_ASSERT(editor.text().empty()) << editor.text();
+    }
+    config.setValueByPath("DisplayUnderline", "False");
+    config.setValueByPath("WaylandBackSpace", "True");
+    bamboo->setConfig(config);
+    {
+        // KWin hands keys we forward to the application in order with our
+        // commits: a terminal gets the word as text.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, false,
+                          "wayland");
+        editor.type("vieetj tieengs");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("g ");
+        FCITX_ASSERT(editor.text() == "việt tiếng ") << editor.text();
+        FCITX_ASSERT(editor.panelPreedit().empty()) << editor.panelPreedit();
+    }
+    {
+        // Other Wayland frontends are not KWin's.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, false,
+                          "wayland_v2");
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.panelPreedit() == "việt") << editor.panelPreedit();
+    }
+    config.setValueByPath("WaylandBackSpace", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "surrounding", PreeditCaps, false,
+                          "wayland");
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.panelPreedit() == "việt") << editor.panelPreedit();
+        FCITX_ASSERT(editor.text().empty()) << editor.text();
+    }
+    clearList(bamboo, "app_modes", "AppMode");
 }
 
 bool hasImportAction(Instance *instance, InputContext *ic) {
@@ -948,6 +1030,7 @@ int main() {
         testQuickTyping(&instance);
         testCapitalizeSentences(&instance);
         testConvert(&instance);
+        testNoUnderline(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

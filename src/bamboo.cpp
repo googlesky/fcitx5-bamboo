@@ -264,22 +264,55 @@ public:
                    CapabilityFlag::Number, CapabilityFlag::Dialable});
     }
 
-    // The mode keys are handled in for this input context right now.
+    // The mode of the program, Exclude in excluded fields.
     BambooInputMode effectiveMode() const {
-        const auto mode = engine_->inputMode(ic_->program());
-        if (mode == BambooInputMode::Exclude || excludedField()) {
-            return BambooInputMode::Exclude;
+        return excludedField() ? BambooInputMode::Exclude
+                               : engine_->inputMode(ic_->program());
+    }
+
+    // How the word being typed shows. Surrounding Text mode never underlines
+    // it: the application's text is edited where it can be, else the word is
+    // plain preedit where the client draws it as told (Qt), else it shows in
+    // fcitx5's window (Chromium, Firefox and terminals underline any
+    // preedit).
+    enum class Method {
+        Exclude,
+        Preedit,
+        PlainPreedit,
+        PanelPreedit,
+        Surrounding,
+        BackSpaces
+    };
+
+    Method method() const {
+        switch (effectiveMode()) {
+        case BambooInputMode::Exclude:
+            return Method::Exclude;
+        case BambooInputMode::Preedit:
+            return Method::Preedit;
+        case BambooInputMode::SurroundingText:
+            break;
+        }
+        // fcitx5-qt reports surrounding text on some updates only, words
+        // would change methods as it comes and goes.
+        if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
+            return Method::PlainPreedit;
         }
         // Deleting blindly would corrupt text: Wayland frontends claim the
         // capability for clients that send no surrounding text.
         const auto &surroundingText = ic_->surroundingText();
-        if (mode == BambooInputMode::SurroundingText &&
-            (!ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) ||
-             !surroundingText.isValid() ||
-             surroundingText.cursor() != surroundingText.anchor())) {
-            return BambooInputMode::Preedit;
+        if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+            surroundingText.isValid() &&
+            surroundingText.cursor() == surroundingText.anchor()) {
+            return Method::Surrounding;
         }
-        return mode;
+        // KWin hands keys we forward to the application in order with our
+        // commits, whether the application keeps that order is its business.
+        if (*engine_->config().waylandBackSpace &&
+            ic_->frontendName() == "wayland") {
+            return Method::BackSpaces;
+        }
+        return Method::PanelPreedit;
     }
 
     void keyEvent(KeyEvent &keyEvent) {
@@ -333,14 +366,14 @@ public:
             keyEvent.filterAndAccept();
             return;
         }
-        const auto mode = effectiveMode();
-        // A word ends in the mode it started in.
-        if (mode != lastMode_) {
+        const auto method = this->method();
+        // A word ends the way it started.
+        if (method != lastMethod_) {
             commitBuffer();
-            lastMode_ = mode;
+            lastMethod_ = method;
             ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
         }
-        if (mode == BambooInputMode::Exclude) {
+        if (method == Method::Exclude) {
             return;
         }
         // Like VNIKey's vim mode: normal mode commands need plain keys.
@@ -351,10 +384,11 @@ public:
             engine_->instance()->deactivate();
             return;
         }
-        const bool surrounding = mode == BambooInputMode::SurroundingText;
+        const bool surrounding =
+            method == Method::Surrounding || method == Method::BackSpaces;
         // The application changed the word (autocorrection, stale surrounding
         // text): start a new word rather than delete what is not ours.
-        if (surrounding && !surroundingInSync()) {
+        if (method == Method::Surrounding && !surroundingInSync()) {
             ResetEngine(bambooEngine_.handle());
         }
 
@@ -393,7 +427,8 @@ public:
     void flush() {
         const int count = EnginePullDeleteCount(bambooEngine_.handle());
         UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
-        changeApplicationText(count, commit ? commit.get() : "");
+        changeApplicationText(count, commit ? commit.get() : "",
+                              lastMethod_ == Method::BackSpaces);
 
         ic_->inputPanel().reset();
         UniqueCPtr<char> preedit(EnginePullPreedit(bambooEngine_.handle()));
@@ -401,7 +436,7 @@ public:
             std::string_view preeditView = preedit.get();
             Text text;
             TextFormatFlags format;
-            if (ic_->capabilityFlags().test(CapabilityFlag::Preedit) &&
+            if (lastMethod_ == Method::Preedit &&
                 *engine_->config().displayUnderline) {
                 format = TextFormatFlag::Underline;
             }
@@ -410,7 +445,8 @@ public:
             }
             text.setCursor(text.textLength());
 
-            if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
+            if (lastMethod_ != Method::PanelPreedit &&
+                ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
                 ic_->inputPanel().setClientPreedit(text);
             } else {
                 ic_->inputPanel().setPreedit(text);
@@ -562,14 +598,20 @@ public:
     }
 
 private:
-    // Deletes count characters before the cursor, then commits text. What the
-    // application reported is stale until it reports again.
-    void changeApplicationText(int count, const std::string &text) {
+    // Deletes count characters before the cursor, with BackSpace keys or
+    // through the surrounding text, then commits text. What the application
+    // reported is stale until it reports again.
+    void changeApplicationText(int count, const std::string &text,
+                               bool backSpaces = false) {
         if (count <= 0 && text.empty()) {
             return;
         }
         surroundingFresh_ = false;
-        if (count > 0) {
+        if (backSpaces) {
+            for (int i = 0; i < count; i++) {
+                ic_->forwardKey(Key(FcitxKey_BackSpace));
+            }
+        } else if (count > 0) {
             ic_->deleteSurroundingText(-count, count);
         }
         if (!text.empty()) {
@@ -687,7 +729,7 @@ private:
     InputContext *ic_;
     CGoObject bambooEngine_;
     bool pickerOpen_ = false;
-    BambooInputMode lastMode_ = BambooInputMode::Preedit;
+    Method lastMethod_ = Method::Preedit;
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
     SentenceKeys sentenceKeys_ = SentenceKeys::Other;
