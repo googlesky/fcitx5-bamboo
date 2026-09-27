@@ -108,6 +108,9 @@ public:
 
 private:
     const BambooAppMode *appMode(const std::string &program) const;
+    // Adds the macros of ibus-bamboo and fcitx5-unikey to the table of the
+    // current input method, keeping the keys it has.
+    void importMacros(InputContext *ic);
 
     Instance *instance_;
     BambooConfig config_;
@@ -125,6 +128,7 @@ private:
     std::unique_ptr<Menu> charsetMenu_;
     std::unique_ptr<SimpleAction> spellCheckAction_;
     std::unique_ptr<SimpleAction> macroAction_;
+    std::unique_ptr<SimpleAction> importMacroAction_;
     std::vector<ScopedConnection> connections_;
     CGoObject dictionary_;
 };

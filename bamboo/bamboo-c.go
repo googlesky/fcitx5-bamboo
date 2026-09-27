@@ -300,6 +300,21 @@ func GetInputMethodNames() **C.char {
 	return toCStringArray(names)
 }
 
+// Returns key, value, key, value... of a UniKey or ibus-bamboo macro file,
+// nothing if it cannot be read.
+//
+//export ReadMacroFile
+func ReadMacroFile(path *C.cchar) **C.char {
+	defer recoverPanic("ReadMacroFile")
+	var flat []string
+	if data, err := os.ReadFile(C.GoString(path)); err == nil {
+		for _, entry := range parseMacroText(string(data)) {
+			flat = append(flat, entry[0], entry[1])
+		}
+	}
+	return toCStringArray(flat)
+}
+
 //export NewDictionary
 func NewDictionary(fd uintptr) uintptr {
 	var data = map[string]bool{}

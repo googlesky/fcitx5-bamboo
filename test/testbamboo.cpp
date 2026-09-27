@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
  */
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/capabilityflags.h>
+#include <fcitx-utils/environ.h>
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
@@ -24,9 +27,13 @@
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+#include <fcitx/statusarea.h>
 #include <fcitx/userinterfacemanager.h>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 #include <vector>
 
 using namespace fcitx;
@@ -317,6 +324,59 @@ void testInputModes(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+bool hasImportAction(Instance *instance, InputContext *ic) {
+    auto *action =
+        instance->userInterfaceManager().lookupAction("bamboo-import-macro");
+    return std::ranges::count(
+               ic->statusArea().actions(StatusGroup::InputMethod), action) == 1;
+}
+
+// Moving from ibus-bamboo: its macro file merges into the current table.
+void testImportMacros(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    const auto home = std::filesystem::temp_directory_path() /
+                      ("testbamboo-home-" + std::to_string(getpid()));
+    std::filesystem::create_directories(home / ".config/ibus-bamboo");
+    const std::string oldHome = getEnvironmentOrEmpty("HOME");
+    setEnvironment("HOME", home.c_str());
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        FCITX_ASSERT(!hasImportAction(instance, &editor));
+    }
+    {
+        std::ofstream file(home / ".config/ibus-bamboo/ibus-bamboo.macro.text");
+        file << "# DO NOT DELETE THIS LINE*** version=1 ***\n#vn:Việt\n"
+                "vn:Việt Nam\nhn:Hải Nam\nlnk:http://x\n";
+    }
+    RawConfig macros;
+    macros.setValueByPath("Macro/0/Key", "hn");
+    macros.setValueByPath("Macro/0/Value", "Hà Nội");
+    bamboo->setSubConfig("macro/Telex", macros);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        FCITX_ASSERT(hasImportAction(instance, &editor));
+        auto *action = instance->userInterfaceManager().lookupAction(
+            "bamboo-import-macro");
+        action->activate(&editor);
+        // Importing again adds nothing.
+        action->activate(&editor);
+        editor.type("vn hn lnk ");
+        FCITX_ASSERT(editor.text() == "việt nam hà nội http://x ")
+            << editor.text();
+    }
+    RawConfig saved;
+    bamboo->getSubConfig("macro/Telex")->save(saved);
+    FCITX_ASSERT(saved.valueByPath("Macro/2/Key") &&
+                 !saved.valueByPath("Macro/3/Key"))
+        << saved;
+    setEnvironment("HOME", oldHome.c_str());
+    std::filesystem::remove_all(home);
+    clearList(bamboo, "macro/Telex", "Macro");
+    RawConfig config;
+    config.setValueByPath("Macro", "False");
+    bamboo->setConfig(config);
+}
+
 void testSpellCheckExceptions(Instance *instance) {
     auto *bamboo = instance->addonManager().addon("bamboo");
     RawConfig config;
@@ -572,6 +632,7 @@ int main() {
         testModeLabel(&instance);
         testTerminalEscape(&instance);
         testSpellCheckExceptions(&instance);
+        testImportMacros(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

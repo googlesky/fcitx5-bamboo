@@ -300,3 +300,21 @@ func TestModesAgree(t *testing.T) {
 		}
 	}
 }
+
+// UniKey and ibus-bamboo macro files.
+func TestParseMacroText(t *testing.T) {
+	var text = "\uFEFF;DO NOT DELETE THIS LINE*** version=1 ***\r\n" +
+		"# DO NOT DELETE THIS LINE*** version=1 ***\n" +
+		"#vn:commented\n; also a comment\n\n" +
+		"vn:Việt Nam\r\nhcm:HCM\n hcm : Hồ Chí Minh \nurl:http://example.com\nno colon\n:no key\nempty:\n"
+	var got = parseMacroText(text)
+	var want = [][2]string{{"vn", "Việt Nam"}, {"hcm", "Hồ Chí Minh"}, {"url", "http://example.com"}}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
