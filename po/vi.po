@@ -258,3 +258,7 @@ msgstr "Không có gì để chuyển đổi"
 #: src/bamboo.cpp
 msgid "Too long to convert"
 msgstr "Văn bản quá dài để chuyển đổi"
+
+#: src/bambooconfig.h
+msgid "Escape switches to English in terminals and code editors"
+msgstr "Esc chuyển sang tiếng Anh trong terminal và trình soạn code"

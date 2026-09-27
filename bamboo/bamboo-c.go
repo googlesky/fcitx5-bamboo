@@ -54,14 +54,16 @@ func Init() {
 	signal.Ignore(syscall.SIGPIPE)
 }
 
+// capitalize: a word starting with this key starts a sentence.
+//
 //export EngineProcessKeyEvent
-func EngineProcessKeyEvent(engine uintptr, keyVal, state uint32, surrounding bool) bool {
+func EngineProcessKeyEvent(engine uintptr, keyVal, state uint32, surrounding, capitalize bool) bool {
 	defer recoverPanic("EngineProcessKeyEvent")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return false
 	}
-	return bambooEngine.processKeyEvent(keyVal, state, surrounding)
+	return bambooEngine.processKeyEvent(keyVal, state, surrounding, capitalize)
 }
 
 // Before the key: takes the word right before the cursor back into the

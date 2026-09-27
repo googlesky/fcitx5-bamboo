@@ -110,8 +110,6 @@ func (e *FcitxBambooEngine) getCommitText(keyVal, state uint32) (string, bool) {
 				// ] => o?
 				return e.getPreeditString(), false
 			}
-		} else if e.macroEnabled {
-			return e.getProcessedString(bamboo.PunctuationMode), false
 		} else {
 			return e.getPreeditString(), false
 		}

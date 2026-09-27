@@ -78,7 +78,10 @@ var (
 // word but their rewrite is: a beginning while typing, a whole word at its
 // end. The composition keeps the keys typed for restoring English words.
 func (e *FcitxBambooEngine) quickWord(complete bool) (string, bool) {
-	if !e.quickDouble && !e.quickStart && !e.quickEnd || e.englishWord || e.preeditor.IsValid(complete) {
+	// Macro keys may put punctuation before the word, a rewrite of the word
+	// would drop it.
+	if !e.quickDouble && !e.quickStart && !e.quickEnd || e.englishWord || e.preeditor.IsValid(complete) ||
+		e.getProcessedString(bamboo.PunctuationMode) != e.getProcessedString(bamboo.VietnameseMode) {
 		return "", false
 	}
 	var keys, changed = e.quickKeys([]rune(e.getProcessedString(bamboo.EnglishMode)))

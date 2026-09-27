@@ -181,6 +181,9 @@ FCITX_CONFIGURATION(
     Option<bool> autoExcludeFields{
         this, "AutoExcludeFields",
         _("Disable Vietnamese in email, number and phone fields"), true};
+    Option<bool> terminalEscape{
+        this, "TerminalEscape",
+        _("Escape switches to English in terminals and code editors"), true};
     Option<bool> capitalizeSentences{
         this, "CapitalizeSentences",
         _("Capitalize the first letter of sentences"), false};

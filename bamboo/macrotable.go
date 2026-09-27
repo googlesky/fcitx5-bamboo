@@ -54,16 +54,16 @@ func (e *MacroTable) HasPrefix(key string, ignoreCase bool) bool {
 }
 
 // UniKey and ibus-bamboo macro files: key:value lines split at the first
-// colon, '#' or ';' comments and a "DO NOT DELETE THIS LINE" header. A key
-// seen twice keeps its first place and its last value, as in ibus-bamboo.
+// colon, '#' or ';' comments. Their "DO NOT DELETE THIS LINE" header has no
+// colon. A key seen twice keeps its first place and its last value, as in
+// ibus-bamboo.
 func parseMacroText(text string) [][2]string {
 	var entries [][2]string
 	var index = map[string]int{}
 	for _, line := range strings.Split(strings.TrimPrefix(text, "\uFEFF"), "\n") {
 		line = strings.TrimSpace(line)
 		var colon = strings.Index(line, ":")
-		if colon < 0 || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") ||
-			strings.Contains(line, "DO NOT DELETE THIS LINE") {
+		if colon < 0 || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
 		}
 		var key, value = strings.TrimSpace(line[:colon]), strings.TrimSpace(line[colon+1:])

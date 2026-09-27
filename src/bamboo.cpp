@@ -255,16 +255,19 @@ public:
         EngineSetOption(bambooEngine_.handle(), &option);
     }
 
+    // Addresses and numbers are never Vietnamese. URL fields are left alone:
+    // browsers' address bars are searched in Vietnamese.
+    bool excludedField() const {
+        return *engine_->config().autoExcludeFields &&
+               ic_->capabilityFlags().testAny(CapabilityFlags{
+                   CapabilityFlag::Email, CapabilityFlag::Digit,
+                   CapabilityFlag::Number, CapabilityFlag::Dialable});
+    }
+
     // The mode keys are handled in for this input context right now.
     BambooInputMode effectiveMode() const {
         const auto mode = engine_->inputMode(ic_->program());
-        // Addresses and numbers are never Vietnamese. URL fields are left
-        // alone: browsers' address bars are searched in Vietnamese.
-        if (mode == BambooInputMode::Exclude ||
-            (*engine_->config().autoExcludeFields &&
-             ic_->capabilityFlags().testAny(CapabilityFlags{
-                 CapabilityFlag::Email, CapabilityFlag::Digit,
-                 CapabilityFlag::Number, CapabilityFlag::Dialable}))) {
+        if (mode == BambooInputMode::Exclude || excludedField()) {
             return BambooInputMode::Exclude;
         }
         // Deleting blindly would corrupt text: Wayland frontends claim the
@@ -297,14 +300,12 @@ public:
         const bool typingKey = EngineIsTypingKey(bambooEngine_.handle(), sym,
                                                  keyEvent.rawKey().states());
         // Typing fast, the application may report its text late: its text is
-        // only trusted when reported after the last key, or when that key only
-        // changed the preedit.
+        // only trusted when reported after our last change and the last key
+        // it got, see changeApplicationText.
         const bool fresh = surroundingFresh_;
-        surroundingFresh_ = false;
-        appChanged_ = false;
         handleKey(keyEvent, restoreKey, fresh);
-        if (fresh && keyEvent.filtered() && !appChanged_) {
-            surroundingFresh_ = true;
+        if (!keyEvent.filtered()) {
+            surroundingFresh_ = false;
         }
         lastKeyToApp_ = !keyEvent.filtered();
         sentenceKeys_ =
@@ -318,8 +319,9 @@ public:
         if (pickerOpen_ && pickerKeyEvent(keyEvent)) {
             return;
         }
+        // A mode of the program can't bring Vietnamese to an excluded field.
         if (checkHotkey(keyEvent, *engine_->config().inputModeSwitchKey) &&
-            !ic_->program().empty() &&
+            !ic_->program().empty() && !excludedField() &&
             !EngineIsTypingKey(bambooEngine_.handle(), sym,
                                keyEvent.rawKey().states())) {
             openPicker();
@@ -342,7 +344,8 @@ public:
             return;
         }
         // Like VNIKey's vim mode: normal mode commands need plain keys.
-        if (keyEvent.key().check(FcitxKey_Escape) && engine_->isTerminal(ic_)) {
+        if (keyEvent.key().check(FcitxKey_Escape) &&
+            *engine_->config().terminalEscape && engine_->isTerminal(ic_)) {
             commitBuffer();
             // Deactivating re-enters this state, process nothing after it.
             engine_->instance()->deactivate();
@@ -377,12 +380,10 @@ public:
                            std::string(textBeforeCursor()).c_str(), sym,
                            keyEvent.rawKey().states(), surrounding);
         }
-        const auto typed =
-            capitalize(sym, keyEvent.rawKey().states(), fresh)
-                ? static_cast<KeySym>(sym - FcitxKey_a + FcitxKey_A)
-                : sym;
-        if (EngineProcessKeyEvent(bambooEngine_.handle(), typed,
-                                  keyEvent.rawKey().states(), surrounding)) {
+        if (EngineProcessKeyEvent(
+                bambooEngine_.handle(), sym, keyEvent.rawKey().states(),
+                surrounding,
+                capitalize(sym, keyEvent.rawKey().states(), fresh))) {
             keyEvent.filterAndAccept();
         }
         flush();
@@ -390,18 +391,9 @@ public:
 
     // Applies the engine output in order: deletion, commit, preedit.
     void flush() {
-        if (const int count = EnginePullDeleteCount(bambooEngine_.handle());
-            count > 0) {
-            ic_->deleteSurroundingText(-count, count);
-            appChanged_ = true;
-        }
-        if (char *commit = EnginePullCommit(bambooEngine_.handle())) {
-            if (commit[0]) {
-                ic_->commitString(commit);
-                appChanged_ = true;
-            }
-            free(commit);
-        }
+        const int count = EnginePullDeleteCount(bambooEngine_.handle());
+        UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
+        changeApplicationText(count, commit ? commit.get() : "");
 
         ic_->inputPanel().reset();
         UniqueCPtr<char> preedit(EnginePullPreedit(bambooEngine_.handle()));
@@ -431,6 +423,7 @@ public:
     void reset() {
         // A click moved the cursor, or focus came back.
         lastKeyToApp_ = true;
+        surroundingFresh_ = false;
         sentenceKeys_ = SentenceKeys::Other;
         pickerOpen_ = false;
         ic_->inputPanel().reset();
@@ -454,8 +447,7 @@ public:
             UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
             if (commit && commit.get()[0]) {
                 committed = commit.get();
-                ic_->commitString(committed);
-                appChanged_ = true;
+                changeApplicationText(0, committed);
             }
         }
         ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
@@ -478,9 +470,10 @@ public:
                 if (committed.empty()) {
                     text = surroundingText.selectedText();
                 }
-            } else {
-                // As the application shows it once it has our commit, unless
-                // it reported its text already.
+            } else if (!ic_->frontendName().starts_with("wayland")) {
+                // Wayland frontends delete through a copy of the text that
+                // may lag. This is the text as the application shows it once
+                // it has our commit, unless it reported its text already.
                 const auto before = stringutils::concat(
                     textBeforeCursor(), surroundingFresh_ ? "" : committed);
                 const auto space = before.find_last_of(" \t\n");
@@ -534,11 +527,7 @@ public:
 
     void commitConversion(const std::string &text) {
         closePicker();
-        appChanged_ = true;
-        if (convertDelete_ > 0) {
-            ic_->deleteSurroundingText(-convertDelete_, convertDelete_);
-        }
-        ic_->commitString(text);
+        changeApplicationText(convertDelete_, text);
         convertDelete_ = 0;
     }
 
@@ -573,6 +562,21 @@ public:
     }
 
 private:
+    // Deletes count characters before the cursor, then commits text. What the
+    // application reported is stale until it reports again.
+    void changeApplicationText(int count, const std::string &text) {
+        if (count <= 0 && text.empty()) {
+            return;
+        }
+        surroundingFresh_ = false;
+        if (count > 0) {
+            ic_->deleteSurroundingText(-count, count);
+        }
+        if (!text.empty()) {
+            ic_->commitString(text);
+        }
+    }
+
     // Keys since a sentence ended: '.', '!' or '?', then spaces or Return.
     enum class SentenceKeys { Other, End, Start };
 
@@ -689,8 +693,6 @@ private:
     SentenceKeys sentenceKeys_ = SentenceKeys::Other;
     // Characters before the cursor a conversion replaces.
     int convertDelete_ = 0;
-    // We committed or deleted text during this key.
-    bool appChanged_ = false;
 };
 
 namespace {

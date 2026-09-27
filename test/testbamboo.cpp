@@ -361,11 +361,20 @@ void testEditWordBeforeCursor(Instance *instance) {
         editor.press(Key(FcitxKey_BackSpace));
         editor.type("j ");
         FCITX_ASSERT(editor.text() == "việt ") << program << editor.text();
-        // A click resets the input method.
-        editor.replaceText("xin chao");
+        // A click resets the input method, then the application reports.
         editor.reset();
+        editor.replaceText("xin chao");
         editor.type("f ");
         FCITX_ASSERT(editor.text() == "xin chào ") << program << editor.text();
+        // Until it reports, the text from before the click is not trusted.
+        editor.replaceText("xin chao");
+        editor.setReportSurrounding(false);
+        editor.reset();
+        editor.replaceText("xin ");
+        editor.type("f ");
+        FCITX_ASSERT(editor.text() == "xin f ") << program << editor.text();
+        editor.setReportSurrounding(true);
+        editor.replaceText("xin chào ");
         // The application did not report the last BackSpace yet.
         editor.type("tooi ");
         editor.press(Key(FcitxKey_BackSpace));
@@ -495,6 +504,31 @@ void testCapitalizeSentences(Instance *instance) {
         editor.type("abc. hey ");
         FCITX_ASSERT(editor.text() == "abc. hey ") << editor.text();
     }
+    {
+        // Our commit when leaving the input method is not reported yet.
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("Hello. abc");
+        editor.setReportSurrounding(false);
+        instance->setCurrentInputMethod(&editor, "keyboard-us", true);
+        instance->setCurrentInputMethod(&editor, "bamboo", true);
+        editor.type("d ");
+        FCITX_ASSERT(editor.text() == "Hello. Abcd ") << editor.text();
+    }
+    RawConfig macros;
+    macros.setValueByPath("Macro/0/Key", "vn");
+    macros.setValueByPath("Macro/0/Value", "việt nam");
+    bamboo->setSubConfig("macro/Telex", macros);
+    config.setValueByPath("Macro", "True");
+    for (const auto *capitalizeMacro : {"True", "False"}) {
+        config.setValueByPath("CapitalizeMacro", capitalizeMacro);
+        bamboo->setConfig(config);
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("abc. vn ");
+        FCITX_ASSERT(editor.text() == "Abc. Việt nam ") << editor.text();
+    }
+    clearList(bamboo, "macro/Telex", "Macro");
+    config.setValueByPath("Macro", "False");
+    config.setValueByPath("CapitalizeMacro", "True");
     config.setValueByPath("InputMethod", "VIQR");
     bamboo->setConfig(config);
     {
@@ -551,6 +585,27 @@ void testConvert(Instance *instance) {
     editor.replaceText("123");
     FCITX_ASSERT(editor.press(convertKey) && !list());
     FCITX_ASSERT(editor.text() == "123") << editor.text();
+    {
+        // Wayland frontends delete through a copy of the text.
+        FakeEditor wayland(instance, "testapp", PreeditCaps, true,
+                           "wayland_v2");
+        wayland.replaceText("xin chaof");
+        FCITX_ASSERT(wayland.press(convertKey) &&
+                     !wayland.inputPanel().candidateList());
+        wayland.selectBack(5);
+        FCITX_ASSERT(wayland.press(convertKey) &&
+                     wayland.inputPanel().candidateList());
+    }
+    // Chosen with the mouse, then the application reports late.
+    editor.replaceText("abc vieejt");
+    FCITX_ASSERT(editor.press(convertKey) && list());
+    editor.setReportSurrounding(false);
+    list()->candidate(0).select(&editor);
+    FCITX_ASSERT(editor.text() == "abc việt") << editor.text();
+    FCITX_ASSERT(editor.press(convertKey) && !list());
+    FCITX_ASSERT(editor.text() == "abc việt") << editor.text();
+    editor.setReportSurrounding(true);
+    editor.replaceText("123");
     // An application reporting its text after our commit.
     editor.type(" ");
     editor.setReportSurrounding(false);
@@ -666,6 +721,16 @@ void testTerminalEscape(Instance *instance) {
         FCITX_ASSERT(editor.text() == "việt") << editor.text();
         FCITX_ASSERT(instance->inputMethod(&editor) == "bamboo");
     }
+    RawConfig config;
+    config.setValueByPath("TerminalEscape", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "vimapp", PreeditCaps);
+        FCITX_ASSERT(!editor.press(Key(FcitxKey_Escape)));
+        FCITX_ASSERT(instance->inputMethod(&editor) == "bamboo");
+    }
+    config.setValueByPath("TerminalEscape", "True");
+    bamboo->setConfig(config);
     clearList(bamboo, "app_modes", "AppMode");
 }
 
@@ -715,6 +780,15 @@ void testFieldHints(Instance *instance) {
         editor.type("tuanf@gmail.com");
         FCITX_ASSERT(editor.text() == "tuanf@gmail.com") << editor.text();
         FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+    }
+    {
+        // The typing mode key is typed there too.
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Email);
+        editor.type("a");
+        editor.press(Key(FcitxKey_asciitilde, KeyState::Shift));
+        editor.type("b@x.vn");
+        FCITX_ASSERT(editor.text() == "a~b@x.vn") << editor.text();
     }
     {
         FakeEditor editor(instance, "testapp",

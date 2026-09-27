@@ -10,6 +10,8 @@ package main
 import (
 	"bamboo-core"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type FcitxBambooEngine struct {
@@ -21,6 +23,9 @@ type FcitxBambooEngine struct {
 	quickStart              bool
 	quickEnd                bool
 	englishWord             bool // the restore key made the word English
+	capitalized             bool // the word starts a sentence, see encodeText
+	retypedWord             string
+	retypedKeys             string // see retype
 	macroTable              *MacroTable
 	dictionary              map[string]bool
 	autoNonVnRestore        bool
@@ -77,10 +82,11 @@ const (
 	FcitxTab       = 0xff09
 )
 
-func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bool) bool {
+// capitalize: a word starting with this key starts a sentence.
+func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding, capitalize bool) bool {
 	if e.getRawKeyLen() == 0 {
-		e.madeUpKeys = false
-		e.englishWord = false
+		e.resetWordFlags()
+		e.capitalized = capitalize
 	}
 	if e.isWordStartW(keyVal, state) {
 		return e.typeWordStartW(keyVal, state, surrounding)
@@ -91,11 +97,29 @@ func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bo
 	return e.preeditProcessKeyEvent(keyVal, state)
 }
 
+func (e *FcitxBambooEngine) resetWordFlags() {
+	e.madeUpKeys = false
+	e.englishWord = false
+	e.capitalized = false
+}
+
 // Restores the key strokes of the current word right away, returns whether
 // there was anything to restore.
 func (e *FcitxBambooEngine) restoreKeyStrokes(surrounding bool) bool {
 	if e.getRawKeyLen() == 0 {
 		return false
+	}
+	if e.madeUpKeys {
+		// A word taken back restores as it was, then the keys typed after.
+		var keys, text = e.getProcessedString(bamboo.EnglishMode), e.getPreeditString()
+		if strings.HasPrefix(keys, e.retypedKeys) {
+			text = e.retypedWord + keys[len(e.retypedKeys):]
+		}
+		e.preeditor.Reset()
+		for _, key := range text {
+			e.preeditor.ProcessKey(key, bamboo.EnglishMode)
+		}
+		e.madeUpKeys = false
 	}
 	e.shouldRestoreKeyStrokes = true
 	newText, _ := e.getCommitText(0, 0)
@@ -250,7 +274,12 @@ func (e *FcitxBambooEngine) getComposedString(oldText string) string {
 	return oldText
 }
 
+// What the application shows of text: in the output charset, upper case
+// first when the word starts a sentence.
 func (e *FcitxBambooEngine) encodeText(text string) string {
+	if first, size := utf8.DecodeRuneInString(text); e.capitalized && unicode.IsLower(first) {
+		text = string(unicode.ToUpper(first)) + text[size:]
+	}
 	return bamboo.Encode(e.outputCharset, text)
 }
 

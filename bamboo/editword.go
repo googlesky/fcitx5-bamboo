@@ -17,8 +17,8 @@ const maxWordLength = 7
 
 // Takes the letters right before the cursor back as the word being typed, so
 // that the key edits them like when they were typed: "chao" then "f" gives
-// "chào". before is the text before the cursor, its last maxWordLength+1
-// characters are enough. Returns the number of characters taken back.
+// "chào". before is the text before the cursor. Returns the number of
+// characters taken back.
 func (e *FcitxBambooEngine) editWordBeforeCursor(before string, keyVal, state uint32, surrounding bool) int {
 	if e.getRawKeyLen() > 0 || e.outputCharset != "Unicode" || !isValidState(state) ||
 		!e.preeditor.CanProcessKey(rune(keyVal)) {
@@ -34,6 +34,7 @@ func (e *FcitxBambooEngine) editWordBeforeCursor(before string, keyVal, state ui
 	if n == 0 || n > maxWordLength || !e.retype(word) {
 		return 0
 	}
+	e.englishWord, e.capitalized = false, false
 	if surrounding {
 		e.bsText = word
 	} else {
@@ -59,8 +60,9 @@ func (e *FcitxBambooEngine) retype(word string) bool {
 		return false
 	}
 	// Restoring "việt" to its keys would show "vieetj", never typed. Words
-	// without marks restore fine: "the" goes on to "there".
+	// without marks restore fine: "te" goes on to "text".
 	e.madeUpKeys = string(keys) != word
+	e.retypedWord, e.retypedKeys = word, string(keys)
 	return true
 }
 

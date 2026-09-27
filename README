@@ -42,7 +42,7 @@ More, from UniKey, OpenKey and others:
   label is VI, or EN when keys go straight to the application.
 - In applications flagged as terminal or code editor in the per application
   list, or reporting themselves as terminals, Escape switches to English as
-  vim needs.
+  vim needs (option TerminalEscape).
 - Words kept by spell check, for proper nouns like Krông.
 - The tray menu imports the macros of ibus-bamboo or fcitx5-unikey.
 - After BackSpace, arrows or a click, a key right after a word edits it like

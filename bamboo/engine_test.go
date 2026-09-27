@@ -28,6 +28,7 @@ type testApp struct {
 	e           *FcitxBambooEngine
 	surrounding bool
 	editWord    bool // like the C++ side with EditWordBeforeCursor
+	capitalize  bool // the next key starts a sentence
 	text        []rune
 }
 
@@ -48,13 +49,10 @@ func (a *testApp) restoreKeyStrokes() {
 
 func (a *testApp) press(keyVal, state uint32) bool {
 	if a.editWord {
-		var before = a.text
-		if len(before) > maxWordLength+1 {
-			before = before[len(before)-maxWordLength-1:]
-		}
-		a.e.editWordBeforeCursor(string(before), keyVal, state, a.surrounding)
+		a.e.editWordBeforeCursor(string(a.text), keyVal, state, a.surrounding)
 	}
-	var handled = a.e.processKeyEvent(keyVal, state, a.surrounding)
+	var handled = a.e.processKeyEvent(keyVal, state, a.surrounding, a.capitalize)
+	a.capitalize = false
 	var n = a.e.takeDeleteCount()
 	if n > len(a.text) {
 		panic("deleting more than the text")
@@ -187,7 +185,7 @@ func TestCommitUsesOutputCharset(t *testing.T) {
 
 // A Go panic inside a cgo call would kill fcitx5.
 func TestExportsSurviveInvalidHandle(t *testing.T) {
-	if EngineProcessKeyEvent(0xdead, 'a', 0, false) {
+	if EngineProcessKeyEvent(0xdead, 'a', 0, false, false) {
 		t.Error("invalid engine handled a key")
 	}
 	ResetEngine(0xdead)
@@ -357,6 +355,40 @@ func TestEditWordBeforeCursor(t *testing.T) {
 	}
 }
 
+// The restore key shows a word taken back as it was, then the keys typed.
+func TestEditWordRestoreKey(t *testing.T) {
+	for _, surrounding := range []bool{false, true} {
+		a := newTestApp("Telex", nil, surrounding)
+		a.editWord = true
+		a.text = []rune("xin việt")
+		a.typeString("z")
+		a.restoreKeyStrokes()
+		if got := string(a.text) + a.e.preeditText; got != "xin việtz" {
+			t.Errorf("surrounding %v: %q", surrounding, got)
+		}
+		// Words before leave no trace on the one taken back.
+		a = newTestApp("Telex", nil, surrounding)
+		a.capitalize = true
+		a.typeString("chaof ")
+		a.editWord = true
+		a.text = append(a.text, []rune("viêt")...)
+		if a.typeString("j "); string(a.text) != "Chào việt " {
+			t.Errorf("surrounding %v: %q", surrounding, string(a.text))
+		}
+		a = newTestApp("Telex", nil, surrounding)
+		a.e.quickEnd = true
+		a.typeString("tooi")
+		a.restoreKeyStrokes()
+		a.typeString(" ")
+		a.editWord = true
+		a.text = append(a.text, []rune("ca")...)
+		a.typeString("g ")
+		if got := string(a.text); got != "tooi cang " {
+			t.Errorf("surrounding %v: %q", surrounding, got)
+		}
+	}
+}
+
 // Preedit mode moves the word into the preedit, surrounding text mode
 // replaces its changed tail.
 func TestEditWordBeforeCursorOutput(t *testing.T) {
@@ -367,7 +399,7 @@ func TestEditWordBeforeCursorOutput(t *testing.T) {
 	}
 	a = newTestApp("Telex", nil, true)
 	a.e.editWordBeforeCursor("xin toi", 's', 0, true)
-	a.e.processKeyEvent('s', 0, true)
+	a.e.processKeyEvent('s', 0, true, false)
 	if n, commit := a.e.takeDeleteCount(), a.e.takeCommitText(); n != 2 || commit != "ói" {
 		t.Errorf("surrounding mode: deleted %d, committed %q", n, commit)
 	}
@@ -464,6 +496,58 @@ func TestQuickTyping(t *testing.T) {
 	}
 }
 
+// Macro keys may put punctuation before the word, quick typing keeps it;
+// with macros on the rewrite shows while typing too.
+func TestQuickTypingWithMacros(t *testing.T) {
+	for _, surrounding := range []bool{false, true} {
+		var texts [2]string
+		for i, quick := range []bool{false, true} {
+			a := newTestApp("Telex", [][2]string{{"->", "→"}}, surrounding)
+			a.e.quickDouble = quick
+			a.typeString("->cca ")
+			texts[i] = string(a.text)
+		}
+		if texts[0] != texts[1] {
+			t.Errorf("surrounding %v: %q with quick typing, %q without", surrounding, texts[1], texts[0])
+		}
+		a := newTestApp("Telex", [][2]string{{"hn", "Hà Nội"}}, surrounding)
+		a.e.quickDouble = true
+		if a.typeString("ccaf"); string(a.text)+a.e.preeditText != "chà" {
+			t.Errorf("surrounding %v: ccaf shows %q", surrounding, string(a.text)+a.e.preeditText)
+		}
+		if a.typeString(" hn "); string(a.text) != "chà hà nội " {
+			t.Errorf("surrounding %v: %q", surrounding, string(a.text))
+		}
+	}
+}
+
+// The C++ side asks for an upper case first letter at a sentence start:
+// the word is typed as usual, what it shows starts upper case.
+func TestCapitalizeWord(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		macros     [][2]string
+		autoCap    bool
+		keys, text string
+	}{
+		{name: "word", keys: "vieetj nam ", text: "Việt nam "},
+		{name: "english", keys: "hello ", text: "Hello "},
+		{name: "dd", keys: "ddi ", text: "Đi "},
+		{name: "macro", macros: [][2]string{{"vn", "việt nam"}}, autoCap: true, keys: "vn ", text: "Việt nam "},
+		{name: "macro_exact", macros: [][2]string{{"vn", "việt nam"}}, keys: "vn ", text: "Việt nam "},
+	} {
+		for _, surrounding := range []bool{false, true} {
+			a := newTestApp("Telex", tc.macros, surrounding)
+			a.e.autoCapitalizeMacro = tc.autoCap
+			a.capitalize = true
+			a.typeString(tc.keys)
+			if string(a.text) != tc.text {
+				t.Errorf("%s surrounding %v: %q, want %q", tc.name, surrounding, string(a.text), tc.text)
+			}
+		}
+	}
+}
+
 // What quick typing shows while typing, and the keys it keeps.
 func TestQuickTypingLive(t *testing.T) {
 	for _, surrounding := range []bool{false, true} {
@@ -542,6 +626,7 @@ func TestTextTransforms(t *testing.T) {
 func TestParseMacroText(t *testing.T) {
 	var text = "\uFEFF;DO NOT DELETE THIS LINE*** version=1 ***\r\n" +
 		"# DO NOT DELETE THIS LINE*** version=1 ***\n" +
+		"DO NOT DELETE THIS LINE*** version=1 ***\n" +
 		"#vn:commented\n; also a comment\n\n" +
 		"vn:Việt Nam\r\nhcm:HCM\n hcm : Hồ Chí Minh \nurl:http://example.com\nno colon\n:no key\nempty:\n"
 	var got = parseMacroText(text)
