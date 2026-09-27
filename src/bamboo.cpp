@@ -157,6 +157,30 @@ public:
         EngineSetOption(bambooEngine_.handle(), &option);
     }
 
+    // The mode keys are handled in for this input context right now.
+    BambooInputMode effectiveMode() const {
+        const auto mode = engine_->inputMode(ic_->program());
+        // Addresses and numbers are never Vietnamese. URL fields are left
+        // alone: browsers' address bars are searched in Vietnamese.
+        if (mode == BambooInputMode::Exclude ||
+            (*engine_->config().autoExcludeFields &&
+             ic_->capabilityFlags().testAny(CapabilityFlags{
+                 CapabilityFlag::Email, CapabilityFlag::Digit,
+                 CapabilityFlag::Number, CapabilityFlag::Dialable}))) {
+            return BambooInputMode::Exclude;
+        }
+        // Deleting blindly would corrupt text: Wayland frontends claim the
+        // capability for clients that send no surrounding text.
+        const auto &surroundingText = ic_->surroundingText();
+        if (mode == BambooInputMode::SurroundingText &&
+            (!ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) ||
+             !surroundingText.isValid() ||
+             surroundingText.cursor() != surroundingText.anchor())) {
+            return BambooInputMode::Preedit;
+        }
+        return mode;
+    }
+
     void keyEvent(KeyEvent &keyEvent) {
         // Ignore all key release.
         if (!bambooEngine_ || keyEvent.isRelease()) {
@@ -182,23 +206,17 @@ public:
             keyEvent.filterAndAccept();
             return;
         }
-        const auto mode = engine_->inputMode(ic_->program());
+        const auto mode = effectiveMode();
+        // A word ends in the mode it started in.
+        if (mode != lastMode_) {
+            commitBuffer();
+            lastMode_ = mode;
+            ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
+        }
         if (mode == BambooInputMode::Exclude) {
             return;
         }
-        // Deleting blindly would corrupt text: Wayland frontends claim the
-        // capability for clients that send no surrounding text.
-        const auto &surroundingText = ic_->surroundingText();
-        const bool surrounding =
-            mode == BambooInputMode::SurroundingText &&
-            ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
-            surroundingText.isValid() &&
-            surroundingText.cursor() == surroundingText.anchor();
-        // A word ends in the mode it started in.
-        if (surrounding != surrounding_) {
-            commitBuffer();
-            surrounding_ = surrounding;
-        }
+        const bool surrounding = mode == BambooInputMode::SurroundingText;
         // The application changed the word (autocorrection, stale surrounding
         // text): start a new word rather than delete what is not ours.
         if (surrounding && !surroundingInSync()) {
@@ -374,7 +392,7 @@ private:
     InputContext *ic_;
     CGoObject bambooEngine_;
     bool pickerOpen_ = false;
-    bool surrounding_ = false;
+    BambooInputMode lastMode_ = BambooInputMode::Preedit;
 };
 
 BambooEngine::BambooEngine(Instance *instance)
@@ -576,11 +594,26 @@ void BambooEngine::setInputMode(InputContext *ic, BambooInputMode mode) {
     iter->mode.setValue(mode);
     safeSaveAsIni(appModes_, AppModeFile);
     ic->propertyFor(&factory_)->closePicker();
+    ic->updateUserInterface(UserInterfaceComponent::StatusArea);
 }
 
 std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
-                                  fcitx::InputContext & /*inputContext*/) {
-    return *config_.inputMethod;
+                                  fcitx::InputContext &inputContext) {
+    const auto mode = inputContext.propertyFor(&factory_)->effectiveMode();
+    if (mode == BambooInputMode::Preedit) {
+        return *config_.inputMethod;
+    }
+    return stringutils::concat(*config_.inputMethod, " (",
+                               BambooInputModeI18NAnnotation::toString(mode),
+                               ")");
+}
+
+std::string BambooEngine::subModeLabelImpl(const InputMethodEntry & /*entry*/,
+                                           InputContext &inputContext) {
+    return inputContext.propertyFor(&factory_)->effectiveMode() ==
+                   BambooInputMode::Exclude
+               ? "EN"
+               : "VI";
 }
 
 void BambooEngine::activate(const InputMethodEntry &entry,

@@ -18,6 +18,8 @@
 #include <fcitx/addonmanager.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
+#include <fcitx/inputmethodengine.h>
+#include <fcitx/inputmethodentry.h>
 #include <fcitx/inputmethodgroup.h>
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
@@ -314,6 +316,87 @@ void testInputModes(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+// The panel shows EN whenever keys go straight to the application.
+void testModeLabel(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    auto *engine = instance->inputMethodEngine("bamboo");
+    const auto *entry = instance->inputMethodManager().entry("bamboo");
+    FCITX_ASSERT(engine && entry);
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "surrounding");
+    appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    appModes.setValueByPath("AppMode/1/Program", "excluded");
+    appModes.setValueByPath("AppMode/1/Mode", "Exclude");
+    bamboo->setSubConfig("app_modes", appModes);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "VI");
+        FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex")
+            << engine->subMode(*entry, editor);
+    }
+    {
+        FakeEditor editor(instance, "surrounding", PreeditCaps);
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (Surrounding Text)")
+            << engine->subMode(*entry, editor);
+    }
+    {
+        FakeEditor editor(instance, "excluded", PreeditCaps);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+    }
+    {
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Email);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+    }
+    clearList(bamboo, "app_modes", "AppMode");
+}
+
+// Addresses and numbers are never Vietnamese, unlike browsers' URL fields
+// where people search.
+void testFieldHints(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    {
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Email);
+        editor.type("tuanf@gmail.com");
+        FCITX_ASSERT(editor.text() == "tuanf@gmail.com") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+    }
+    {
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Dialable);
+        editor.type("0912 dd");
+        FCITX_ASSERT(editor.text() == "0912 dd") << editor.text();
+    }
+    {
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Url);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+    }
+    {
+        // Becoming a number field mid-word ends the word first.
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("vieetj");
+        editor.setCapabilityFlags(PreeditCaps | CapabilityFlag::Number);
+        editor.type("1");
+        FCITX_ASSERT(editor.text() == "việt1") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+    }
+    RawConfig config;
+    config.setValueByPath("AutoExcludeFields", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Email);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+    }
+    config.setValueByPath("AutoExcludeFields", "True");
+    bamboo->setConfig(config);
+}
+
 // ibus-bamboo's Shift+~ table choosing the typing mode of the application.
 void testInputModePicker(Instance *instance) {
     const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
@@ -428,6 +511,8 @@ int main() {
         testSpellCheckAction(&instance);
         testInputModes(&instance);
         testInputModePicker(&instance);
+        testFieldHints(&instance);
+        testModeLabel(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

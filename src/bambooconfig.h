@@ -146,6 +146,9 @@ FCITX_CONFIGURATION(
                   BambooInputMode::Preedit};
     SubConfigOption appModes{this, "AppModes", _("Typing Mode per Application"),
                              "fcitx://config/addon/bamboo/app_modes"};
+    Option<bool> autoExcludeFields{
+        this, "AutoExcludeFields",
+        _("Disable Vietnamese in email, number and phone fields"), true};
     KeyListOption inputModeSwitchKey{
         this,
         "InputModeSwitchKey",
