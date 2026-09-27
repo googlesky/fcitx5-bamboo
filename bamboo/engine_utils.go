@@ -46,6 +46,7 @@ func (e *FcitxBambooEngine) runeCount() int {
 func isValidState(state uint32) bool {
 	if state&FcitxControlMask != 0 ||
 		state&FcitxMod1Mask != 0 ||
+		state&FcitxMod4Mask != 0 ||
 		state&FcitxIgnoredMask != 0 ||
 		state&FcitxSuperMask != 0 ||
 		state&FcitxHyperMask != 0 ||
@@ -115,11 +116,11 @@ func (e *FcitxBambooEngine) getCommitText(keyVal, state uint32) (string, bool) {
 		}
 	} else if e.macroEnabled {
 		// macro processing
-		if isPrintableKey && e.macroTable.HasPrefix(oldText+keyS) {
+		if isPrintableKey && e.macroTable.HasPrefix(oldText+keyS, e.autoCapitalizeMacro) {
 			e.preeditor.ProcessKey(keyRune, bamboo.EnglishMode)
 			return oldText + keyS, false
 		}
-		if e.macroTable.HasKey(oldText) {
+		if e.macroTable.HasKey(oldText, e.autoCapitalizeMacro) {
 			if isPrintableKey {
 				return e.expandMacro(oldText) + keyS, true
 			}
@@ -160,7 +161,7 @@ func (e *FcitxBambooEngine) getMacroText() (bool, string) {
 		return false, ""
 	}
 	var text = e.preeditor.GetProcessedString(bamboo.PunctuationMode)
-	if e.macroTable.HasKey(text) {
+	if e.macroTable.HasKey(text, e.autoCapitalizeMacro) {
 		return true, e.expandMacro(text)
 	}
 	return false, ""

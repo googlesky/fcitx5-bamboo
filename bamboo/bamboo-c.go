@@ -24,16 +24,25 @@ import (
 	*/
 	"C"
 	"bamboo-core"
-	"runtime/cgo"
-	"unsafe"
 	"os/signal"
+	"runtime/cgo"
 	"syscall"
+	"unsafe"
 )
 import (
 	"bufio"
+	"log"
 	"os"
+	"sort"
 	"strings"
 )
+
+// A panic escaping a cgo call would take the whole fcitx5 process down.
+func recoverPanic(where string) {
+	if r := recover(); r != nil {
+		log.Printf("bamboo: recovered from panic in %s: %v", where, r)
+	}
+}
 
 //export Init
 func Init() {
@@ -41,26 +50,67 @@ func Init() {
 }
 
 //export EngineProcessKeyEvent
-func EngineProcessKeyEvent(engine uintptr, keyVal, state uint32) bool {
+func EngineProcessKeyEvent(engine uintptr, keyVal, state uint32, surrounding bool) bool {
+	defer recoverPanic("EngineProcessKeyEvent")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return false
 	}
+	if surrounding {
+		return bambooEngine.bsProcessKeyEvent(keyVal, state)
+	}
 	return bambooEngine.preeditProcessKeyEvent(keyVal, state)
 }
 
-//export EngineSetRestoreKeyStroke
-func EngineSetRestoreKeyStroke(engine uintptr) {
+// Whether the key belongs to the word being typed (VIQR's '~' tone key), so
+// that a hotkey on the same key does not steal it mid-word.
+//
+//export EngineIsTypingKey
+func EngineIsTypingKey(engine uintptr, keyVal, state uint32) bool {
+	defer recoverPanic("EngineIsTypingKey")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
-		return
+		return false
 	}
-	bambooEngine.shouldRestoreKeyStrokes = true
+	return bambooEngine.getRawKeyLen() > 0 && isValidState(state) && bambooEngine.preeditor.CanProcessKey(rune(keyVal))
 }
 
+// The word being typed in surrounding text mode as the application should
+// show it, for the C++ side to check before editing.
+//
+//export EngineSurroundingWord
+func EngineSurroundingWord(engine uintptr) *C.char {
+	defer recoverPanic("EngineSurroundingWord")
+	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
+	if !ok {
+		return nil
+	}
+	return C.CString(bambooEngine.encodeText(bambooEngine.bsText))
+}
+
+// Restores the key strokes of the current word right away, returns whether
+// there was anything to restore.
+//
+//export EngineRestoreKeyStrokes
+func EngineRestoreKeyStrokes(engine uintptr, surrounding bool) bool {
+	defer recoverPanic("EngineRestoreKeyStrokes")
+	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
+	if !ok || bambooEngine.getRawKeyLen() == 0 {
+		return false
+	}
+	bambooEngine.shouldRestoreKeyStrokes = true
+	newText, _ := bambooEngine.getCommitText(0, 0)
+	if surrounding {
+		bambooEngine.updatePreviousText(newText)
+	} else {
+		bambooEngine.updatePreedit(newText)
+	}
+	return true
+}
 
 //export EnginePullPreedit
 func EnginePullPreedit(engine uintptr) *C.char {
+	defer recoverPanic("EnginePullPreedit")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return nil
@@ -68,10 +118,18 @@ func EnginePullPreedit(engine uintptr) *C.char {
 	return C.CString(bambooEngine.preeditText)
 }
 
+// Without a preedit (surrounding text mode) the word is already in the
+// application, committing it again would duplicate it.
+//
 //export EngineCommitPreedit
 func EngineCommitPreedit(engine uintptr) {
+	defer recoverPanic("EngineCommitPreedit")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
+		return
+	}
+	if bambooEngine.preeditText == "" {
+		bambooEngine.commitPreeditAndReset("")
 		return
 	}
 	bambooEngine.commitPreeditAndReset(bambooEngine.getPreeditString())
@@ -79,17 +137,29 @@ func EngineCommitPreedit(engine uintptr) {
 
 //export EnginePullCommit
 func EnginePullCommit(engine uintptr) *C.char {
+	defer recoverPanic("EnginePullCommit")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return nil
 	}
-	var commitText = bambooEngine.commitText
-	bambooEngine.commitText = ""
-	return C.CString(commitText)
+	return C.CString(bambooEngine.takeCommitText())
+}
+
+// Number of characters before the cursor to delete before committing.
+//
+//export EnginePullDeleteCount
+func EnginePullDeleteCount(engine uintptr) int32 {
+	defer recoverPanic("EnginePullDeleteCount")
+	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
+	if !ok {
+		return 0
+	}
+	return int32(bambooEngine.takeDeleteCount())
 }
 
 //export EngineSetOption
 func EngineSetOption(engine uintptr, option *C.FcitxBambooEngineOption) {
+	defer recoverPanic("EngineSetOption")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return
@@ -117,6 +187,7 @@ func EngineSetOption(engine uintptr, option *C.FcitxBambooEngineOption) {
 
 //export NewEngine
 func NewEngine(name *C.cchar, dictHandle uintptr, tableHandle uintptr) uintptr {
+	defer recoverPanic("NewEngine")
 	dict, ok := cgo.Handle(dictHandle).Value().(*map[string]bool)
 	if !ok {
 		return 0
@@ -128,27 +199,15 @@ func NewEngine(name *C.cchar, dictHandle uintptr, tableHandle uintptr) uintptr {
 	}
 
 	imName := C.GoString(name)
-
-	var engine = &FcitxBambooEngine{
-		preeditor:               bamboo.NewEngine(bamboo.ParseInputMethod(bamboo.InputMethodDefinitions, imName), bamboo.EstdFlags),
-		macroTable:              table,
-		dictionary:              *dict,
-		autoNonVnRestore:        true,
-		ddFreeStyle:             true,
-		macroEnabled:            false,
-		autoCapitalizeMacro:     false,
-		lastKeyWithShift:        false,
-		spellCheckWithDicts:     true,
-		preeditText:             "",
-		commitText:              "",
-		shouldRestoreKeyStrokes: false,
-		outputCharset:           "Unicode",
-	}
-	return uintptr(cgo.NewHandle(engine))
+	var inputMethod = bamboo.ParseInputMethod(bamboo.InputMethodDefinitions, imName)
+	return uintptr(cgo.NewHandle(newFcitxBambooEngine(inputMethod, *dict, table)))
 }
 
+// A malformed custom keymap entry can make bamboo-core panic, 0 is returned.
+//
 //export NewCustomEngine
 func NewCustomEngine(definition **C.char, dictHandle uintptr, tableHandle uintptr) uintptr {
+	defer recoverPanic("NewCustomEngine")
 	dict, ok := cgo.Handle(dictHandle).Value().(*map[string]bool)
 	if !ok {
 		return 0
@@ -169,47 +228,31 @@ func NewCustomEngine(definition **C.char, dictHandle uintptr, tableHandle uintpt
 		i += 2
 	}
 
-	var engine = &FcitxBambooEngine{
-		preeditor:               bamboo.NewEngine(bamboo.ParseInputMethod(definitions, "Custom"), bamboo.EstdFlags),
-		macroTable:              table,
-		dictionary:              *dict,
-		autoNonVnRestore:        true,
-		ddFreeStyle:             true,
-		macroEnabled:            false,
-		autoCapitalizeMacro:     false,
-		lastKeyWithShift:        false,
-		spellCheckWithDicts:     false,
-		preeditText:             "",
-		commitText:              "",
-		shouldRestoreKeyStrokes: false,
-		outputCharset:           "Unicode",
-	}
-
-	return uintptr(cgo.NewHandle(engine))
+	var inputMethod = bamboo.ParseInputMethod(definitions, "Custom")
+	return uintptr(cgo.NewHandle(newFcitxBambooEngine(inputMethod, *dict, table)))
 }
 
 //export NewMacroTable
 func NewMacroTable(definition **C.char) uintptr {
-	var table = &MacroTable{
-		mTable: map[string]string{},
-	}
+	defer recoverPanic("NewMacroTable")
+	var entries [][2]string
 	def := (*[1<<20 - 1]*C.char)(unsafe.Pointer(definition))
-	i := 0
-	for def[i] != nil {
-		table.mTable[C.GoString(def[i])] = C.GoString(def[i+1])
-		i += 2
+	for i := 0; def[i] != nil; i += 2 {
+		entries = append(entries, [2]string{C.GoString(def[i]), C.GoString(def[i+1])})
 	}
 
-	return uintptr(cgo.NewHandle(table))
+	return uintptr(cgo.NewHandle(newMacroTable(entries)))
 }
 
 //export DeleteObject
 func DeleteObject(handle uintptr) {
+	defer recoverPanic("DeleteObject")
 	cgo.Handle(handle).Delete()
 }
 
 //export ResetEngine
 func ResetEngine(engine uintptr) {
+	defer recoverPanic("ResetEngine")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
 	if !ok {
 		return
@@ -232,17 +275,18 @@ func toCStringArray(strs []string) **C.char {
 
 //export GetCharsetNames
 func GetCharsetNames() **C.char {
-	return toCStringArray(bamboo.GetCharsetNames())
+	var names = bamboo.GetCharsetNames()
+	sort.Strings(names[1:]) // Unicode stays first
+	return toCStringArray(names)
 }
 
 //export GetInputMethodNames
 func GetInputMethodNames() **C.char {
-	names := make([]string, len(bamboo.InputMethodDefinitions))
-	i := 0
+	var names []string
 	for imName := range bamboo.InputMethodDefinitions {
-		names[i] = imName
-		i++
+		names = append(names, imName)
 	}
+	sort.Strings(names)
 	return toCStringArray(names)
 }
 
@@ -250,6 +294,7 @@ func GetInputMethodNames() **C.char {
 func NewDictionary(fd uintptr) uintptr {
 	var data = map[string]bool{}
 	f := os.NewFile(fd, "dict")
+	defer f.Close()
 	rd := bufio.NewReader(f)
 	for {
 		line, _, err := rd.ReadLine()

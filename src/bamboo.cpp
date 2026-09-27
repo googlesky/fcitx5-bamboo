@@ -25,6 +25,7 @@
 #include <fcitx-utils/utf8.h>
 #include <fcitx/action.h>
 #include <fcitx/addoninstance.h>
+#include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
@@ -37,7 +38,6 @@
 #include <fcitx/userinterfacemanager.h>
 #include <fcntl.h>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -52,6 +52,7 @@ constexpr std::string_view MacroPrefix = "macro/";
 constexpr std::string_view InputMethodActionPrefix = "bamboo-input-method-";
 constexpr std::string_view CharsetActionPrefix = "bamboo-charset-";
 const std::string CustomKeymapFile = "conf/bamboo-custom-keymap.conf";
+const std::string AppModeFile = "conf/bamboo-app-mode.conf";
 
 FCITX_DEFINE_LOG_CATEGORY(bamboo, "bamboo");
 
@@ -61,8 +62,6 @@ std::string macroFile(std::string_view imName) {
 
 uintptr_t newMacroTable(const BambooMacroTable &macroTable) {
     std::vector<char *> charArray;
-    RawConfig r;
-    macroTable.save(r);
     for (const auto &keymap : *macroTable.macros) {
         charArray.push_back(const_cast<char *>(keymap.key->data()));
         charArray.push_back(const_cast<char *>(keymap.value->data()));
@@ -70,6 +69,27 @@ uintptr_t newMacroTable(const BambooMacroTable &macroTable) {
     charArray.push_back(nullptr);
     return NewMacroTable(charArray.data());
 }
+
+// Normalization drops Shift from "~", accept keys saved either way.
+bool checkHotkey(const KeyEvent &keyEvent, const KeyList &keys) {
+    return keyEvent.key().checkKeyList(keys) ||
+           keyEvent.rawKey().checkKeyList(keys);
+}
+
+class InputModeCandidateWord : public CandidateWord {
+public:
+    InputModeCandidateWord(BambooEngine *engine, BambooInputMode mode)
+        : CandidateWord(Text(BambooInputModeI18NAnnotation::toString(mode))),
+          engine_(engine), mode_(mode) {}
+
+    void select(InputContext *inputContext) const override {
+        engine_->setInputMode(inputContext, mode_);
+    }
+
+private:
+    BambooEngine *engine_;
+    BambooInputMode mode_;
+};
 
 std::vector<std::string> convertToStringList(char **array) {
     std::vector<std::string> result;
@@ -84,6 +104,7 @@ std::vector<std::string> convertToStringList(char **array) {
 } // namespace
 
 #define FCITX_BAMBOO_DEBUG() FCITX_LOGC(bamboo, Debug)
+#define FCITX_BAMBOO_WARN() FCITX_LOGC(bamboo, Warn)
 
 class BambooState final : public InputContextProperty {
 public:
@@ -101,9 +122,7 @@ public:
             std::vector<char *> charArray;
             for (const auto &keymap : *engine_->customKeymap().customKeymap) {
                 charArray.push_back(const_cast<char *>(keymap.key->data()));
-                FCITX_INFO() << charArray.back();
                 charArray.push_back(const_cast<char *>(keymap.value->data()));
-                FCITX_INFO() << charArray.back();
             }
             charArray.push_back(nullptr);
             bambooEngine_.reset(NewCustomEngine(charArray.data(),
@@ -113,6 +132,10 @@ public:
             bambooEngine_.reset(NewEngine(engine_->config().inputMethod->data(),
                                           engine_->dictionary(),
                                           engine_->macroTable()));
+        }
+        if (!bambooEngine_) {
+            FCITX_BAMBOO_WARN() << "Failed to create engine for input method "
+                                << *engine_->config().inputMethod;
         }
         setOption();
     }
@@ -135,30 +158,75 @@ public:
     }
 
     void keyEvent(KeyEvent &keyEvent) {
-        if (!bambooEngine_) {
-            return;
-        }
         // Ignore all key release.
-        if (keyEvent.isRelease()) {
+        if (!bambooEngine_ || keyEvent.isRelease()) {
             return;
         }
-        if (keyEvent.rawKey().check(FcitxKey_Shift_L) ||
-            keyEvent.rawKey().check(FcitxKey_Shift_R)) {
+        const bool restoreKey =
+            keyEvent.key().checkKeyList(*engine_->config().restoreKeyStroke);
+        // Like ibus-bamboo, a lone Shift or CapsLock must not end the word.
+        const auto sym = keyEvent.rawKey().sym();
+        if (!restoreKey &&
+            (sym == FcitxKey_Shift_L || sym == FcitxKey_Shift_R ||
+             sym == FcitxKey_Caps_Lock)) {
             return;
         }
-
-        if (keyEvent.key().checkKeyList(*engine_->config().restoreKeyStroke)) {
-            EngineSetRestoreKeyStroke(bambooEngine_.handle());
+        if (pickerOpen_ && pickerKeyEvent(keyEvent)) {
+            return;
+        }
+        if (checkHotkey(keyEvent, *engine_->config().inputModeSwitchKey) &&
+            !ic_->program().empty() &&
+            !EngineIsTypingKey(bambooEngine_.handle(), sym,
+                               keyEvent.rawKey().states())) {
+            openPicker();
             keyEvent.filterAndAccept();
             return;
         }
-
-        if (EngineProcessKeyEvent(bambooEngine_.handle(),
-                                  keyEvent.rawKey().sym(),
-                                  keyEvent.rawKey().states())) {
-            keyEvent.filterAndAccept();
+        const auto mode = engine_->inputMode(ic_->program());
+        if (mode == BambooInputMode::Exclude) {
+            return;
+        }
+        // Deleting blindly would corrupt text: Wayland frontends claim the
+        // capability for clients that send no surrounding text.
+        const auto &surroundingText = ic_->surroundingText();
+        const bool surrounding =
+            mode == BambooInputMode::SurroundingText &&
+            ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+            surroundingText.isValid() &&
+            surroundingText.cursor() == surroundingText.anchor();
+        // A word ends in the mode it started in.
+        if (surrounding != surrounding_) {
+            commitBuffer();
+            surrounding_ = surrounding;
+        }
+        // The application changed the word (autocorrection, stale surrounding
+        // text): start a new word rather than delete what is not ours.
+        if (surrounding && !surroundingInSync()) {
+            ResetEngine(bambooEngine_.handle());
         }
 
+        if (restoreKey) {
+            // With nothing to restore the key belongs to the application.
+            if (EngineRestoreKeyStrokes(bambooEngine_.handle(), surrounding)) {
+                keyEvent.filterAndAccept();
+                flush();
+            }
+            return;
+        }
+
+        if (EngineProcessKeyEvent(bambooEngine_.handle(), sym,
+                                  keyEvent.rawKey().states(), surrounding)) {
+            keyEvent.filterAndAccept();
+        }
+        flush();
+    }
+
+    // Applies the engine output in order: deletion, commit, preedit.
+    void flush() {
+        if (const int count = EnginePullDeleteCount(bambooEngine_.handle());
+            count > 0) {
+            ic_->deleteSurroundingText(-count, count);
+        }
         if (char *commit = EnginePullCommit(bambooEngine_.handle())) {
             if (commit[0]) {
                 ic_->commitString(commit);
@@ -192,6 +260,7 @@ public:
     }
 
     void reset() {
+        pickerOpen_ = false;
         ic_->inputPanel().reset();
         if (bambooEngine_) {
             ResetEngine(bambooEngine_.handle());
@@ -201,6 +270,7 @@ public:
     }
 
     void commitBuffer() {
+        pickerOpen_ = false;
         ic_->inputPanel().reset();
         if (bambooEngine_) {
             // The reason that we do not commit here is we want to force the
@@ -216,10 +286,95 @@ public:
         ic_->updatePreedit();
     }
 
+    // ibus-bamboo's Shift+~ table choosing the typing mode of the program.
+    void openPicker() {
+        commitBuffer();
+        auto candidates = std::make_unique<CommonCandidateList>();
+        candidates->setLayoutHint(CandidateLayoutHint::Vertical);
+        const auto current = engine_->inputMode(ic_->program());
+        std::vector<std::string> labels;
+        for (auto mode :
+             {BambooInputMode::Preedit, BambooInputMode::SurroundingText,
+              BambooInputMode::Exclude}) {
+            labels.push_back(mode == current
+                                 ? "*. "
+                                 : std::to_string(labels.size() + 1) + ". ");
+            candidates->append<InputModeCandidateWord>(engine_, mode);
+        }
+        candidates->setLabels(labels);
+        candidates->setCursorIndex(static_cast<int>(current));
+        ic_->inputPanel().setAuxUp(Text(
+            stringutils::concat(_("Typing mode for"), " ", ic_->program())));
+        ic_->inputPanel().setCandidateList(std::move(candidates));
+        ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+        pickerOpen_ = true;
+    }
+
+    void closePicker() {
+        pickerOpen_ = false;
+        ic_->inputPanel().reset();
+        ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+    }
+
 private:
+    bool surroundingInSync() const {
+        UniqueCPtr<char> word(EngineSurroundingWord(bambooEngine_.handle()));
+        if (!word || !word.get()[0]) {
+            return true;
+        }
+        const auto &surroundingText = ic_->surroundingText();
+        const auto &text = surroundingText.text();
+        const auto length = utf8::lengthValidated(text);
+        if (length == utf8::INVALID_LENGTH ||
+            surroundingText.cursor() > length) {
+            return false;
+        }
+        return std::string_view(text)
+            .substr(0, utf8::ncharByteLength(text.begin(),
+                                             surroundingText.cursor()))
+            .ends_with(word.get());
+    }
+
+    // Returns false when the key should go on as normal typing.
+    bool pickerKeyEvent(KeyEvent &keyEvent) {
+        auto candidates = ic_->inputPanel().candidateList();
+        const auto &key = keyEvent.key();
+        if (!candidates ||
+            checkHotkey(keyEvent, *engine_->config().inputModeSwitchKey)) {
+            // Like ibus-bamboo, pressed twice the key reaches the application.
+            closePicker();
+            return candidates != nullptr;
+        }
+        int index = key.digitSelection();
+        if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
+            index = candidates->cursorIndex();
+        }
+        if (index >= 0 && index < candidates->size()) {
+            keyEvent.filterAndAccept();
+            candidates->candidate(index).select(ic_);
+            return true;
+        }
+        const bool up = key.check(FcitxKey_Up) || key.check(FcitxKey_Left);
+        if (up || key.check(FcitxKey_Down) || key.check(FcitxKey_Right)) {
+            auto *movable = candidates->toCursorMovable();
+            up ? movable->prevCandidate() : movable->nextCandidate();
+            ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+            keyEvent.filterAndAccept();
+            return true;
+        }
+        closePicker();
+        if (key.check(FcitxKey_Escape)) {
+            keyEvent.filterAndAccept();
+            return true;
+        }
+        return false;
+    }
+
     BambooEngine *engine_;
     InputContext *ic_;
     CGoObject bambooEngine_;
+    bool pickerOpen_ = false;
+    bool surrounding_ = false;
 };
 
 BambooEngine::BambooEngine(Instance *instance)
@@ -310,7 +465,7 @@ BambooEngine::BambooEngine(Instance *instance)
     connections_.emplace_back(
         spellCheckAction_->connect<SimpleAction::Activated>(
             [this](InputContext *ic) {
-                config_.spellCheck.setValue(!*config_.spellCheck);
+                config_.autoNonVnRestore.setValue(!*config_.autoNonVnRestore);
                 saveConfig();
                 refreshOption();
                 updateSpellAction(ic);
@@ -335,6 +490,7 @@ BambooEngine::BambooEngine(Instance *instance)
 void BambooEngine::reloadConfig() {
     readAsIni(config_, "conf/bamboo.conf");
     readAsIni(customKeymap_, CustomKeymapFile);
+    readAsIni(appModes_, AppModeFile);
     for (const auto &imName : imNames_) {
         auto &table = macroTables_[imName];
         readAsIni(table, macroFile(imName));
@@ -347,6 +503,9 @@ void BambooEngine::reloadConfig() {
 const Configuration *BambooEngine::getSubConfig(const std::string &path) const {
     if (path == "custom_keymap") {
         return &customKeymap_;
+    }
+    if (path == "app_modes") {
+        return &appModes_;
     }
     if (path.starts_with(MacroPrefix)) {
         const auto imName = path.substr(MacroPrefix.size());
@@ -379,6 +538,10 @@ void BambooEngine::setSubConfig(const std::string &path,
         customKeymap_.load(config, true);
         safeSaveAsIni(customKeymap_, CustomKeymapFile);
         refreshEngine();
+    } else if (path == "app_modes") {
+        appModes_.load(config, true);
+        safeSaveAsIni(appModes_, AppModeFile);
+        refreshOption();
     } else if (path.starts_with(MacroPrefix)) {
         const auto imName = path.substr(MacroPrefix.size());
         if (auto iter = macroTables_.find(imName); iter != macroTables_.end()) {
@@ -390,6 +553,31 @@ void BambooEngine::setSubConfig(const std::string &path,
     }
 }
 
+BambooInputMode BambooEngine::inputMode(const std::string &program) const {
+    if (!program.empty()) {
+        for (const auto &appMode : *appModes_.appModes) {
+            if (*appMode.program == program) {
+                return *appMode.mode;
+            }
+        }
+    }
+    return *config_.inputMode;
+}
+
+void BambooEngine::setInputMode(InputContext *ic, BambooInputMode mode) {
+    auto &appModes = *appModes_.appModes.mutableValue();
+    auto iter = std::ranges::find_if(appModes, [ic](const auto &appMode) {
+        return *appMode.program == ic->program();
+    });
+    if (iter == appModes.end()) {
+        iter = appModes.emplace(appModes.end());
+        iter->program.setValue(ic->program());
+    }
+    iter->mode.setValue(mode);
+    safeSaveAsIni(appModes_, AppModeFile);
+    ic->propertyFor(&factory_)->closePicker();
+}
+
 std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
                                   fcitx::InputContext & /*inputContext*/) {
     return *config_.inputMethod;
@@ -398,7 +586,6 @@ std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
 void BambooEngine::activate(const InputMethodEntry &entry,
                             InputContextEvent &event) {
     FCITX_UNUSED(entry);
-    FCITX_UNUSED(event);
     auto &statusArea = event.inputContext()->statusArea();
 
     updateMacroAction(event.inputContext());
@@ -468,8 +655,8 @@ void BambooEngine::refreshOption() {
 }
 
 void BambooEngine::updateSpellAction(InputContext *ic) {
-    spellCheckAction_->setChecked(*config_.spellCheck);
-    spellCheckAction_->setShortText(*config_.spellCheck
+    spellCheckAction_->setChecked(*config_.autoNonVnRestore);
+    spellCheckAction_->setShortText(*config_.autoNonVnRestore
                                         ? _("Spell Check Enabled")
                                         : _("Spell Check Disabled"));
     if (ic) {

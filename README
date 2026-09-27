@@ -12,3 +12,27 @@ $ mkdir build && cd build
 $ cmake -DCMAKE_INSTALL_PREFIX=[prefix to fcitx5] ..
 $ make
 # make install
+
+Test:
+$ ctest
+
+Features following ibus-bamboo:
+- Typing modes, remembered per application. Press ~ to choose the mode of
+  the current application (press it twice to type ~):
+  1. Preedit: the word being typed is shown as preedit.
+  2. Surrounding Text: no preedit, the word is fixed in place through the
+     application's surrounding text (GTK applications, Wayland applications
+     that report it). Elsewhere, Qt applications included, and whenever the
+     text around the cursor is not what was typed, it falls back to preedit
+     or starts a new word instead of deleting text.
+  3. Exclude: no Vietnamese in this application.
+  The default mode, the per application list and the key are in the
+  configuration.
+- Spell check restores the keys of words that are not Vietnamese, by the
+  spelling rules or optionally by the dictionary.
+- Macros, auto capitalization of macros, a key to restore the key strokes of
+  the current word, output charsets and a custom keymap.
+
+Use fcitx5's own features for the rest of ibus-bamboo: Unicode input with
+Ctrl+Shift+U, emoji and character search with Ctrl+Alt+Shift+U, and fcitx5's
+trigger key to switch to English.

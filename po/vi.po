@@ -110,3 +110,43 @@ msgstr "Giá trị"
 #: org.fcitx.Fcitx5.Addon.Bamboo.metainfo.xml.in:8
 msgid "Vietnamese input method"
 msgstr "Kiểu gõ tiếng Việt"
+
+#: src/bamboo.cpp
+msgid "Typing mode for"
+msgstr "Chế độ gõ cho"
+
+#: src/bambooconfig.h
+msgid "Choose Typing Mode for Application"
+msgstr "Phím chọn chế độ gõ cho ứng dụng"
+
+#: src/bambooconfig.h
+msgid "Default Typing Mode"
+msgstr "Chế độ gõ mặc định"
+
+#: src/bambooconfig.h
+msgid "Exclude"
+msgstr "Loại trừ (tắt tiếng Việt)"
+
+#: src/bambooconfig.h
+msgid "Preedit"
+msgstr "Pre-edit"
+
+#: src/bambooconfig.h
+msgid "Program"
+msgstr "Chương trình"
+
+#: src/bambooconfig.h
+msgid "Surrounding Text"
+msgstr "Sửa lỗi gạch chân (Surrounding Text)"
+
+#: src/bambooconfig.h
+msgid "Typing Mode"
+msgstr "Chế độ gõ"
+
+#: src/bambooconfig.h
+msgid "Typing Mode per Application"
+msgstr "Chế độ gõ theo ứng dụng"
+
+#: src/bambooconfig.h
+msgid "Use dictionary for spell check"
+msgstr "Dùng từ điển để kiểm tra chính tả"

@@ -23,9 +23,23 @@ type FcitxBambooEngine struct {
 	lastKeyWithShift        bool
 	spellCheckWithDicts     bool
 	preeditText             string
-	commitText              string
+	pendingCommit           string
+	pendingDelete           int
+	bsText                  string // surrounding text mode, see updatePreviousText
 	shouldRestoreKeyStrokes bool
 	outputCharset           string
+}
+
+// The C++ side applies the user options right after creation.
+func newFcitxBambooEngine(inputMethod bamboo.InputMethod, dictionary map[string]bool, table *MacroTable) *FcitxBambooEngine {
+	return &FcitxBambooEngine{
+		preeditor:        bamboo.NewEngine(inputMethod, bamboo.EstdFlags),
+		macroTable:       table,
+		dictionary:       dictionary,
+		autoNonVnRestore: true,
+		ddFreeStyle:      true,
+		outputCharset:    "Unicode",
+	}
 }
 
 const (
@@ -33,6 +47,7 @@ const (
 	FcitxLockMask    = 1 << 1
 	FcitxControlMask = 1 << 2
 	FcitxMod1Mask    = 1 << 3
+	FcitxMod4Mask    = 1 << 6
 
 	/* The next few modifiers are used by XKB so we skip to the end.
 	 * Bits 15 - 23 are currently unused. Bit 29 is used internally.
@@ -65,7 +80,9 @@ func (e *FcitxBambooEngine) preeditProcessKeyEvent(keyVal uint32, state uint32) 
 		}
 	}
 
-	if keyVal == FcitxBackSpace {
+	// Ctrl+BackSpace and the like delete more than a character: they end the
+	// word like other shortcuts.
+	if keyVal == FcitxBackSpace && isValidState(state) {
 		if e.runeCount() == 1 {
 			e.commitPreeditAndReset("")
 			return true
@@ -99,7 +116,7 @@ func (e *FcitxBambooEngine) preeditProcessKeyEvent(keyVal uint32, state uint32) 
 }
 
 func (e *FcitxBambooEngine) expandMacro(str string) string {
-	var macroText = e.macroTable.GetText(str)
+	var macroText = e.macroTable.GetText(str, e.autoCapitalizeMacro)
 	if e.autoCapitalizeMacro {
 		switch determineMacroCase(str) {
 		case VnCaseAllSmall:
@@ -112,15 +129,7 @@ func (e *FcitxBambooEngine) expandMacro(str string) string {
 }
 
 func (e *FcitxBambooEngine) updatePreedit(processedStr string) {
-	var encodedStr = e.encodeText(processedStr)
-	var preeditLen = uint32(len([]rune(encodedStr)))
-	if preeditLen == 0 {
-		e.preeditText = ""
-		e.commitText = ""
-		return
-	}
-
-	e.preeditText = encodedStr
+	e.preeditText = e.encodeText(processedStr)
 }
 
 func (e *FcitxBambooEngine) getBambooInputMode() bamboo.Mode {
@@ -198,7 +207,18 @@ func (e *FcitxBambooEngine) getPreeditString() string {
 }
 
 func (e *FcitxBambooEngine) commitPreeditAndReset(s string) {
-	e.commitText = s
+	e.commitText(s)
 	e.preeditText = ""
+	e.bsText = ""
 	e.preeditor.Reset()
+}
+
+func (e *FcitxBambooEngine) commitText(str string) {
+	e.pendingCommit += e.encodeText(str)
+}
+
+func (e *FcitxBambooEngine) takeCommitText() string {
+	var text = e.pendingCommit
+	e.pendingCommit = ""
+	return text
 }

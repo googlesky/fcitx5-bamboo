@@ -10,9 +10,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <fcitx-config/configuration.h>
+#include <fcitx-config/enum.h>
 #include <fcitx-config/option.h>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/i18n.h>
+#include <fcitx-utils/key.h>
+#include <fcitx-utils/keysym.h>
 #include <fcitx-utils/stringutils.h>
 #include <string>
 #include <utility>
@@ -102,6 +105,30 @@ using InputMethodOption =
     Option<std::string, InputMethodConstrain, DefaultMarshaller<std::string>,
            InputMethodAnnotation>;
 
+// ibus-bamboo's typing modes ("chế độ gõ"). SurroundingText types without a
+// preedit by editing the text before the cursor, Exclude leaves the
+// application alone.
+enum class BambooInputMode { Preedit, SurroundingText, Exclude };
+FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooInputMode, N_("Preedit"),
+                                 N_("Surrounding Text"), N_("Exclude"));
+
+FCITX_CONFIGURATION(
+    BambooAppMode,
+    Option<std::string> program{this, "Program", _("Program"), ""};
+    OptionWithAnnotation<BambooInputMode, BambooInputModeI18NAnnotation> mode{
+        this, "Mode", _("Typing Mode"), BambooInputMode::Preedit};);
+
+FCITX_CONFIGURATION(BambooAppModeList,
+                    OptionWithAnnotation<std::vector<BambooAppMode>,
+                                         ListDisplayOptionAnnotation>
+                        appModes{this,
+                                 "AppMode",
+                                 _("Typing Mode per Application"),
+                                 {},
+                                 {},
+                                 {},
+                                 ListDisplayOptionAnnotation("Program")};);
+
 FCITX_CONFIGURATION(
     BambooConfig, KeyListOption restoreKeyStroke{this,
                                                  "RestoreKeyStroke",
@@ -114,19 +141,32 @@ FCITX_CONFIGURATION(
                     InputMethodConstrain(&inputMethod)};
     OptionWithAnnotation<std::string, StringListAnnotation> outputCharset{
         this, "OutputCharset", _("Output Charset"), "Unicode"};
-    Option<bool> spellCheck{this, "SpellCheck", _("Enable spell check"), true};
-    Option<bool> macro{this, "Macro", _("Enable Macro"), true};
+    OptionWithAnnotation<BambooInputMode, BambooInputModeI18NAnnotation>
+        inputMode{this, "DefaultInputMode", _("Default Typing Mode"),
+                  BambooInputMode::Preedit};
+    SubConfigOption appModes{this, "AppModes", _("Typing Mode per Application"),
+                             "fcitx://config/addon/bamboo/app_modes"};
+    KeyListOption inputModeSwitchKey{
+        this,
+        "InputModeSwitchKey",
+        _("Choose Typing Mode for Application"),
+        {Key(FcitxKey_asciitilde)},
+        KeyListConstrain(KeyConstrainFlag::AllowModifierLess)};
+    // Defaults follow ibus-bamboo. Spell check means restoring the keys of
+    // invalid words, SpellCheck only picks the dictionary over the rules.
+    Option<bool> autoNonVnRestore{this, "AutoNonVnRestore",
+                                  _("Enable spell check"), true};
+    Option<bool> spellCheck{this, "SpellCheck",
+                            _("Use dictionary for spell check"), false};
+    Option<bool> macro{this, "Macro", _("Enable Macro"), false};
     Option<bool> capitalizeMacro{this, "CapitalizeMacro", _("Capitalize Macro"),
                                  true};
-    Option<bool> autoNonVnRestore{this, "AutoNonVnRestore",
-                                  _("Auto restore keys with invalid words"),
-                                  true};
     Option<bool> modernStyle{this, "ModernStyle",
                              _("Use oà, _uý (instead of òa, úy)"), false};
     Option<bool> freeMarking{this, "FreeMarking",
                              _("Allow type with more freedom"), true};
     Option<bool> displayUnderline{this, "DisplayUnderline",
-                                  _("Underline the preedit text"), true};
+                                  _("Underline the preedit text"), false};
     SubConfigOption custumKeymap{this, "CustomKeymap", _("Custom Keymap"),
                                  "fcitx://config/addon/bamboo/custom_keymap"};);
 } // namespace fcitx

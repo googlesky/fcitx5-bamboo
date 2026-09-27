@@ -1,8 +1,9 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.12)
 
 project(fcitx5-bamboo VERSION 1.0.11)
 
 set(REQUIRED_FCITX_VERSION 5.1.13)
+option(ENABLE_TEST "Build Test" On)
 find_package(ECM 1.0.0 REQUIRED)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 include(FeatureSummary)
@@ -22,6 +23,11 @@ add_subdirectory(po)
 add_subdirectory(bamboo)
 add_subdirectory(src)
 add_subdirectory(data)
+
+if (ENABLE_TEST)
+    enable_testing()
+    add_subdirectory(test)
+endif ()
 
 fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.Bamboo.metainfo.xml.in
     org.fcitx.Fcitx5.Addon.Bamboo.metainfo.xml XML)

@@ -1,6 +1,6 @@
 
-file(GLOB BAMBOO_CORE_GO_SRCS bamboo-core/*.go)
-file(GLOB BAMBOO_GO_SRCS *.go)
+file(GLOB BAMBOO_CORE_GO_SRCS CONFIGURE_DEPENDS bamboo-core/*.go)
+file(GLOB BAMBOO_GO_SRCS CONFIGURE_DEPENDS *.go)
 
 # Custom command for 'go build -buildmode=c-archive ...'
 # to create a library from Go codes.
@@ -10,7 +10,7 @@ add_custom_command(OUTPUT bamboo-core.a bamboo-core.h
     COMMAND env go build -buildmode=c-archive
                 -trimpath
                 -o "${CMAKE_CURRENT_BINARY_DIR}/bamboo-core.a"
-            ${BAMBOO_GO_SRCS})
+            .)
 add_custom_target(bamboo-core DEPENDS bamboo-core.a)
 # Add a custom target for the library.
 add_library(Bamboo::Core UNKNOWN IMPORTED GLOBAL)

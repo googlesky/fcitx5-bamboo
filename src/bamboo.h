@@ -23,45 +23,34 @@
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/instance.h>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace fcitx {
 
+// Owns a cgo handle. 0 is never a valid handle, the Go side returns it on
+// failure.
 class CGoObject {
 public:
-    CGoObject(std::optional<uintptr_t> handle = std::nullopt)
-        : handle_(handle) {}
-    ~CGoObject() {
-        if (handle_) {
-            DeleteObject(*handle_);
-        }
-    }
+    CGoObject(uintptr_t handle = 0) : handle_(handle) {}
+    ~CGoObject() { reset(); }
     CGoObject(const CGoObject &other) = delete;
-    CGoObject(CGoObject &&other) = default;
-
-    CGoObject &operator=(CGoObject &&other) = default;
     CGoObject &operator=(const CGoObject &other) = delete;
 
-    void reset(std::optional<uintptr_t> handle = std::nullopt) {
-        clear();
+    void reset(uintptr_t handle = 0) {
+        if (handle_) {
+            DeleteObject(handle_);
+        }
         handle_ = handle;
     }
 
-    uintptr_t handle() { return *handle_; }
+    uintptr_t handle() const { return handle_; }
 
-    operator bool() const { return handle_.has_value(); }
+    explicit operator bool() const { return handle_ != 0; }
 
 private:
-    void clear() {
-        if (handle_) {
-            DeleteObject(*handle_);
-            handle_ = std::nullopt;
-        }
-    }
-    std::optional<uintptr_t> handle_;
+    uintptr_t handle_;
 };
 
 class BambooState;
@@ -80,6 +69,9 @@ public:
 
     const auto &config() const { return config_; }
     const auto &customKeymap() const { return customKeymap_; }
+    BambooInputMode inputMode(const std::string &program) const;
+    // Remembers the typing mode of the program of ic.
+    void setInputMode(InputContext *ic, BambooInputMode mode);
 
     void reloadConfig() override;
     const Configuration *getConfig() const override { return &config_; }
@@ -112,6 +104,7 @@ private:
     Instance *instance_;
     BambooConfig config_;
     BambooCustomKeymap customKeymap_;
+    BambooAppModeList appModes_;
     std::unordered_map<std::string, BambooMacroTable> macroTables_;
     std::unordered_map<std::string, CGoObject> macroTableObject_;
     FactoryFor<BambooState> factory_;
