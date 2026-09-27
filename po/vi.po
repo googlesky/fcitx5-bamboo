@@ -150,3 +150,111 @@ msgstr "Chế độ gõ theo ứng dụng"
 #: src/bambooconfig.h
 msgid "Use dictionary for spell check"
 msgstr "Dùng từ điển để kiểm tra chính tả"
+
+#: src/bambooconfig.h
+msgid "Disable Vietnamese in email, number and phone fields"
+msgstr "Tắt tiếng Việt trong ô email, số và điện thoại"
+
+#: src/bambooconfig.h
+msgid "Terminal or code editor"
+msgstr "Terminal hoặc trình soạn code"
+
+#: src/bambooconfig.h
+msgid "Escape switches to English, as vim needs, and sentences are not capitalized"
+msgstr "Esc chuyển sang tiếng Anh (cần cho vim), không tự viết hoa đầu câu"
+
+#: src/bambooconfig.h
+msgid "Words kept by spell check"
+msgstr "Từ giữ nguyên khi kiểm tra chính tả"
+
+#: src/bamboo.cpp
+msgid "Import ibus-bamboo/UniKey macros"
+msgstr "Nhập gõ tắt từ ibus-bamboo/UniKey"
+
+#: src/bamboo.cpp
+msgid "Imported macros"
+msgstr "Đã nhập gõ tắt"
+
+#: src/bambooconfig.h
+msgid "Edit the word before the cursor"
+msgstr "Sửa từ ngay trước con trỏ"
+
+#: src/bambooconfig.h
+msgid "After BackSpace, arrows or a click, a key right after a word edits it like one being typed"
+msgstr "Sau khi xóa lùi, dùng phím mũi tên hoặc bấm chuột, phím gõ ngay sau một từ sẽ sửa từ đó như khi đang gõ"
+
+#: src/bambooconfig.h
+msgid "Quick Typing"
+msgstr "Gõ nhanh"
+
+#: src/bambooconfig.h
+msgid "W with nothing to mark types"
+msgstr "Phím W đứng riêng gõ ra"
+
+#: src/bambooconfig.h
+msgid "As the input method does"
+msgstr "Theo kiểu gõ"
+
+#: src/bambooconfig.h
+msgid "Ư"
+msgstr "Ư"
+
+#: src/bambooconfig.h
+msgid "Ư, but W at word start"
+msgstr "Ư, nhưng W ở đầu từ"
+
+#: src/bambooconfig.h
+msgid "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
+msgstr "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
+
+#: src/bambooconfig.h
+msgid "f→ph, j→gi, w→qu at word start"
+msgstr "f→ph, j→gi, w→qu ở đầu từ"
+
+#: src/bambooconfig.h
+msgid "g→ng, h→nh, k→ch at word end"
+msgstr "g→ng, h→nh, k→ch ở cuối từ"
+
+#: src/bambooconfig.h
+msgid "Capitalize the first letter of sentences"
+msgstr "Tự viết hoa chữ cái đầu câu"
+
+#: src/bambooconfig.h
+msgid "Convert the selection or the word before the cursor"
+msgstr "Chuyển đổi vùng chọn hoặc từ trước con trỏ"
+
+#: src/bamboo.cpp
+msgid "Convert"
+msgstr "Chuyển đổi"
+
+#: src/bamboo.cpp
+msgid "Typed again with the input method"
+msgstr "Gõ lại bằng kiểu gõ đang dùng"
+
+#: src/bamboo.cpp
+msgid "Without diacritics"
+msgstr "Bỏ dấu"
+
+#: src/bamboo.cpp
+msgid "Upper case"
+msgstr "CHỮ HOA"
+
+#: src/bamboo.cpp
+msgid "Lower case"
+msgstr "chữ thường"
+
+#: src/bamboo.cpp
+msgid "Capitalized words"
+msgstr "Viết Hoa Đầu Từ"
+
+#: src/bamboo.cpp
+msgid "From"
+msgstr "Từ bảng mã"
+
+#: src/bamboo.cpp
+msgid "Nothing to convert"
+msgstr "Không có gì để chuyển đổi"
+
+#: src/bamboo.cpp
+msgid "Too long to convert"
+msgstr "Văn bản quá dài để chuyển đổi"
