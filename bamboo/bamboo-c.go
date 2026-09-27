@@ -22,6 +22,9 @@ import (
 			bool freeMarking;
 			char **spellCheckExceptions;
 			int standaloneW;
+			bool quickDouble;
+			bool quickStart;
+			bool quickEnd;
 		} FcitxBambooEngineOption;
 	*/
 	"C"
@@ -105,17 +108,7 @@ func EngineSurroundingWord(engine uintptr) *C.char {
 func EngineRestoreKeyStrokes(engine uintptr, surrounding bool) bool {
 	defer recoverPanic("EngineRestoreKeyStrokes")
 	bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine)
-	if !ok || bambooEngine.getRawKeyLen() == 0 {
-		return false
-	}
-	bambooEngine.shouldRestoreKeyStrokes = true
-	newText, _ := bambooEngine.getCommitText(0, 0)
-	if surrounding {
-		bambooEngine.updatePreviousText(newText)
-	} else {
-		bambooEngine.updatePreedit(newText)
-	}
-	return true
+	return ok && bambooEngine.restoreKeyStrokes(surrounding)
 }
 
 //export EnginePullPreedit
@@ -201,8 +194,12 @@ func EngineSetOption(engine uintptr, option *C.FcitxBambooEngineOption) {
 	} else {
 		flags &= ^bamboo.EfreeToneMarking
 	}
+	bambooEngine.flags = flags
 	bambooEngine.setStandaloneW(int(option.standaloneW), flags)
 	bambooEngine.preeditor.SetFlag(flags)
+	bambooEngine.quickDouble = bool(option.quickDouble)
+	bambooEngine.quickStart = bool(option.quickStart)
+	bambooEngine.quickEnd = bool(option.quickEnd)
 }
 
 //export NewEngine

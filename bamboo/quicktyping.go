@@ -9,6 +9,7 @@ package main
 
 import (
 	"bamboo-core"
+	"unicode"
 )
 
 // What a w with nothing to mark types.
@@ -64,4 +65,66 @@ func (e *FcitxBambooEngine) typeWordStartW(keyVal, state uint32, surrounding boo
 		e.updatePreedit(e.getPreeditString())
 	}
 	return true
+}
+
+// OpenKey's quick typing, see quickKeys.
+var (
+	quickDouble = map[rune]rune{'c': 'h', 'g': 'i', 'k': 'h', 'n': 'g', 'p': 'h', 'q': 'u', 't': 'h'}
+	quickStart  = map[rune][2]rune{'f': {'p', 'h'}, 'j': {'g', 'i'}, 'w': {'q', 'u'}}
+	quickEnd    = map[rune][2]rune{'g': {'n', 'g'}, 'h': {'n', 'h'}, 'k': {'c', 'h'}}
+)
+
+// The word typed with quick typing, when the keys typed are no Vietnamese
+// word but their rewrite is: a beginning while typing, a whole word at its
+// end. The composition keeps the keys typed for restoring English words.
+func (e *FcitxBambooEngine) quickWord(complete bool) (string, bool) {
+	if !e.quickDouble && !e.quickStart && !e.quickEnd || e.englishWord || e.preeditor.IsValid(complete) {
+		return "", false
+	}
+	var keys, changed = e.quickKeys([]rune(e.getProcessedString(bamboo.EnglishMode)))
+	if !changed {
+		return "", false
+	}
+	var scratch = bamboo.NewEngine(e.preeditor.GetInputMethod(), e.flags)
+	for _, key := range keys {
+		scratch.ProcessKey(key, bamboo.VietnameseMode)
+	}
+	if complete && e.spellCheckWithDicts {
+		if !e.dictionary[scratch.GetProcessedString(bamboo.VietnameseMode|bamboo.LowerCase)] {
+			return "", false
+		}
+	} else if !scratch.IsValid(complete) {
+		return "", false
+	}
+	return scratch.GetProcessedString(bamboo.VietnameseMode), true
+}
+
+// Rewrites cc ch, gg gi, kk kh, nn ng, pp ph, qq qu, tt th; f ph, j gi, w qu
+// starting a word; g ng, h nh, k ch ending it, before its tone keys.
+func (e *FcitxBambooEngine) quickKeys(keys []rune) ([]rune, bool) {
+	var last = len(keys) - 1
+	for last >= 0 && inKeyList(e.preeditor.GetInputMethod().ToneKeys, unicode.ToLower(keys[last])) {
+		last--
+	}
+	var out = make([]rune, 0, len(keys)+2)
+	for i, key := range keys {
+		var lower = unicode.ToLower(key)
+		if pair, ok := quickStart[lower]; e.quickStart && ok && i == 0 && len(keys) > 1 {
+			out = append(out, withCase(pair[0], key), withCase(pair[1], keys[1]))
+		} else if second, ok := quickDouble[lower]; e.quickDouble && ok && len(out) > 0 && unicode.ToLower(out[len(out)-1]) == lower {
+			out = append(out, withCase(second, key))
+		} else if pair, ok := quickEnd[lower]; e.quickEnd && ok && i == last && i > 0 {
+			out = append(out, withCase(pair[0], key), withCase(pair[1], key))
+		} else {
+			out = append(out, key)
+		}
+	}
+	return out, string(out) != string(keys)
+}
+
+func withCase(chr, like rune) rune {
+	if unicode.IsUpper(like) {
+		return unicode.ToUpper(chr)
+	}
+	return chr
 }

@@ -145,11 +145,20 @@ FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooStandaloneW,
                                  N_("As the input method does"), N_("Ư"),
                                  N_("Ư, but W at word start"));
 
+// OpenKey's quick typing, used when the keys typed make no Vietnamese word
+// but their rewrite does.
 FCITX_CONFIGURATION(
     BambooQuickTyping,
     OptionWithAnnotation<BambooStandaloneW, BambooStandaloneWI18NAnnotation>
         standaloneW{this, "StandaloneW", _("W with nothing to mark types"),
-                    BambooStandaloneW::Default};);
+                    BambooStandaloneW::Default};
+    Option<bool> doubleConsonants{
+        this, "DoubleConsonants",
+        _("cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"), false};
+    Option<bool> startConsonants{this, "StartConsonants",
+                                 _("f→ph, j→gi, w→qu at word start"), false};
+    Option<bool> endConsonants{this, "EndConsonants",
+                               _("g→ng, h→nh, k→ch at word end"), false};);
 
 FCITX_CONFIGURATION(
     BambooConfig, KeyListOption restoreKeyStroke{this,

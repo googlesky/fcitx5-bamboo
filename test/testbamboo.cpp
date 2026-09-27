@@ -414,6 +414,27 @@ void testStandaloneW(Instance *instance) {
     }
 }
 
+void testQuickTyping(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig config;
+    config.setValueByPath("QuickTyping/EndConsonants", "True");
+    config.setValueByPath("QuickTyping/DoubleConsonants", "True");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("dog ccaf happy ");
+        FCITX_ASSERT(editor.text() == "dong chà happy ") << editor.text();
+    }
+    config.setValueByPath("QuickTyping/EndConsonants", "False");
+    config.setValueByPath("QuickTyping/DoubleConsonants", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("dog ");
+        FCITX_ASSERT(editor.text() == "dog ") << editor.text();
+    }
+}
+
 bool hasImportAction(Instance *instance, InputContext *ic) {
     auto *action =
         instance->userInterfaceManager().lookupAction("bamboo-import-macro");
@@ -725,6 +746,7 @@ int main() {
         testImportMacros(&instance);
         testEditWordBeforeCursor(&instance);
         testStandaloneW(&instance);
+        testQuickTyping(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

@@ -67,7 +67,8 @@ func (e *FcitxBambooEngine) getCommitText(keyVal, state uint32) (string, bool) {
 	// restore key strokes by pressing Shift + Space
 	if e.shouldRestoreKeyStrokes {
 		e.shouldRestoreKeyStrokes = false
-		e.preeditor.RestoreLastWord(!bamboo.HasAnyVietnameseRune(oldText))
+		e.englishWord = bamboo.HasAnyVietnameseRune(oldText)
+		e.preeditor.RestoreLastWord(!e.englishWord)
 		return e.getPreeditString(), false
 	}
 	var keyS string
@@ -139,6 +140,10 @@ func (e *FcitxBambooEngine) handleNonVnWord(keyVal, state uint32) string {
 	)
 	if isPrintableKey {
 		keyS = string(keyRune)
+	}
+	// While typing "cak" is shown, a valid beginning; "cách" ends the word.
+	if quick, ok := e.quickWord(true); ok {
+		oldText = quick
 	}
 	if bamboo.HasAnyVietnameseRune(oldText) && e.mustFallbackToEnglish() {
 		e.preeditor.RestoreLastWord(false)

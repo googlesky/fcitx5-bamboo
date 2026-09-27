@@ -15,7 +15,12 @@ import (
 type FcitxBambooEngine struct {
 	preeditor               bamboo.IEngine
 	inputMethod             bamboo.InputMethod // before the options, see setStandaloneW
+	flags                   uint
 	standaloneW             int
+	quickDouble             bool // see quickWord
+	quickStart              bool
+	quickEnd                bool
+	englishWord             bool // the restore key made the word English
 	macroTable              *MacroTable
 	dictionary              map[string]bool
 	autoNonVnRestore        bool
@@ -39,6 +44,7 @@ func newFcitxBambooEngine(inputMethod bamboo.InputMethod, dictionary map[string]
 	return &FcitxBambooEngine{
 		preeditor:        bamboo.NewEngine(inputMethod, bamboo.EstdFlags),
 		inputMethod:      inputMethod,
+		flags:            bamboo.EstdFlags,
 		macroTable:       table,
 		dictionary:       dictionary,
 		autoNonVnRestore: true,
@@ -74,6 +80,7 @@ const (
 func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bool) bool {
 	if e.getRawKeyLen() == 0 {
 		e.madeUpKeys = false
+		e.englishWord = false
 	}
 	if e.isWordStartW(keyVal, state) {
 		return e.typeWordStartW(keyVal, state, surrounding)
@@ -82,6 +89,22 @@ func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bo
 		return e.bsProcessKeyEvent(keyVal, state)
 	}
 	return e.preeditProcessKeyEvent(keyVal, state)
+}
+
+// Restores the key strokes of the current word right away, returns whether
+// there was anything to restore.
+func (e *FcitxBambooEngine) restoreKeyStrokes(surrounding bool) bool {
+	if e.getRawKeyLen() == 0 {
+		return false
+	}
+	e.shouldRestoreKeyStrokes = true
+	newText, _ := e.getCommitText(0, 0)
+	if surrounding {
+		e.updatePreviousText(newText)
+	} else {
+		e.updatePreedit(newText)
+	}
+	return true
 }
 
 func (e *FcitxBambooEngine) preeditProcessKeyEvent(keyVal uint32, state uint32) bool {
@@ -177,6 +200,9 @@ func (e *FcitxBambooEngine) shouldFallbackToEnglish(checkVnRune bool) bool {
 	if checkVnRune && !bamboo.HasAnyVietnameseRune(vnSeq) {
 		return false
 	}
+	if _, ok := e.quickWord(false); ok {
+		return false
+	}
 	return !e.preeditor.IsValid(false)
 }
 
@@ -191,6 +217,9 @@ func (e *FcitxBambooEngine) mustFallbackToEnglish() bool {
 	}
 	// we want to allow dd even in non-vn sequence, because dd is used a lot in abbreviation
 	if e.ddFreeStyle && strings.ContainsRune(vnSeq, 'đ') {
+		return false
+	}
+	if _, ok := e.quickWord(true); ok {
 		return false
 	}
 	if e.spellCheckWithDicts {
@@ -212,6 +241,9 @@ func (e *FcitxBambooEngine) isSpellCheckException(vnSeq string, complete bool) b
 }
 
 func (e *FcitxBambooEngine) getComposedString(oldText string) string {
+	if quick, ok := e.quickWord(true); ok {
+		return quick
+	}
 	if bamboo.HasAnyVietnameseRune(oldText) && e.mustFallbackToEnglish() {
 		return e.getProcessedString(bamboo.EnglishMode)
 	}
@@ -228,10 +260,17 @@ func (e *FcitxBambooEngine) getProcessedString(mode bamboo.Mode) string {
 
 func (e *FcitxBambooEngine) getPreeditString() string {
 	if e.macroEnabled {
-		return e.getProcessedString(bamboo.PunctuationMode)
+		var text = e.getProcessedString(bamboo.PunctuationMode)
+		if quick, ok := e.quickWord(false); ok && !e.macroTable.HasPrefix(text, e.autoCapitalizeMacro) {
+			return quick
+		}
+		return text
 	}
 	if e.shouldFallbackToEnglish(true) {
 		return e.getProcessedString(bamboo.EnglishMode)
+	}
+	if quick, ok := e.quickWord(false); ok {
+		return quick
 	}
 	return e.getProcessedString(bamboo.VietnameseMode)
 }

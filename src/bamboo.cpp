@@ -187,6 +187,9 @@ public:
             .spellCheckExceptions = exceptions.data(),
             .standaloneW =
                 static_cast<int>(*engine_->config().quickTyping->standaloneW),
+            .quickDouble = *engine_->config().quickTyping->doubleConsonants,
+            .quickStart = *engine_->config().quickTyping->startConsonants,
+            .quickEnd = *engine_->config().quickTyping->endConsonants,
         };
         EngineSetOption(bambooEngine_.handle(), &option);
     }

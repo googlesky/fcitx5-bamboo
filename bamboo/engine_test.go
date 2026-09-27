@@ -11,6 +11,7 @@ import (
 	"bamboo-core"
 	"math/rand"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,13 @@ func newTestApp(imName string, macros [][2]string, surrounding bool) *testApp {
 	e.macroEnabled = macros != nil
 	e.autoCapitalizeMacro = true
 	return &testApp{e: e, surrounding: surrounding}
+}
+
+// The restore key, as the C++ side handles it.
+func (a *testApp) restoreKeyStrokes() {
+	a.e.restoreKeyStrokes(a.surrounding)
+	var n = a.e.takeDeleteCount()
+	a.text = append(a.text[:len(a.text)-n], []rune(a.e.takeCommitText())...)
 }
 
 func (a *testApp) press(keyVal, state uint32) bool {
@@ -265,16 +273,19 @@ func TestModesAgree(t *testing.T) {
 	sort.Strings(ims)
 	var dict = map[string]bool{"việt": true, "tiếng": true, "tôi": true}
 	var options = []struct {
-		restore, dict, modern, editWord bool
-		charset                         string
+		restore, dict, modern, editWord, quick bool
+		charset                                string
 	}{
-		{true, false, false, false, "Unicode"},
-		{false, false, false, false, "Unicode"},
-		{true, true, true, false, "Unicode"},
-		{true, false, false, false, "TCVN3 (ABC)"},
-		{true, false, true, false, "VIQR"},
-		{true, false, false, true, "Unicode"},
-		{false, false, true, true, "Unicode"},
+		{true, false, false, false, false, "Unicode"},
+		{false, false, false, false, false, "Unicode"},
+		{true, true, true, false, false, "Unicode"},
+		{true, false, false, false, false, "TCVN3 (ABC)"},
+		{true, false, true, false, false, "VIQR"},
+		{true, false, false, true, false, "Unicode"},
+		{false, false, true, true, false, "Unicode"},
+		{true, false, false, false, true, "Unicode"},
+		{true, true, true, true, true, "Unicode"},
+		{false, false, false, false, true, "TCVN3 (ABC)"},
 	}
 	for _, im := range ims {
 		for _, o := range options {
@@ -283,6 +294,9 @@ func TestModesAgree(t *testing.T) {
 					var r = rand.New(rand.NewSource(seed))
 					var p, b = newTestApp(im, macros, false), newTestApp(im, macros, true)
 					p.editWord, b.editWord = o.editWord, o.editWord
+					for _, e := range []*FcitxBambooEngine{p.e, b.e} {
+						e.quickDouble, e.quickStart, e.quickEnd = o.quick, o.quick, o.quick
+					}
 					for _, e := range []*FcitxBambooEngine{p.e, b.e} {
 						e.autoNonVnRestore, e.spellCheckWithDicts, e.dictionary = o.restore, o.dict, dict
 						e.outputCharset = o.charset
@@ -409,6 +423,78 @@ func TestStandaloneW(t *testing.T) {
 			if tc.text != "" && string(a.text) != tc.text {
 				t.Errorf("%s surrounding %v: text %q, want %q", tc.name, surrounding, string(a.text), tc.text)
 			}
+		}
+	}
+}
+
+// OpenKey's quick typing: keys that are no Vietnamese word are typed as
+// their rewrite when that is one.
+func TestQuickTyping(t *testing.T) {
+	const double, start, end = 1, 2, 4
+	for _, tc := range []struct {
+		name       string
+		quick      int
+		w          int
+		macros     [][2]string
+		keys, text string
+	}{
+		{name: "double", quick: double, keys: "ccaf gga kkoong ppas qqaf nnaf tte ", text: "chà gia không phá quà ngà the "},
+		{name: "double_upper", quick: double, keys: "CCAF Ccaf ", text: "CHÀ Chà "},
+		{name: "double_twice_in_a_row", quick: double, keys: "ccc ", text: "ccc "},
+		{name: "english_restored", quick: double | start | end, keys: "happy file account ", text: "happy file account "},
+		{name: "beginning_only", quick: double, keys: "ccaks ", text: "ccaks "},
+		{name: "start", quick: start, keys: "fair jaf wa Fair FAIR ", text: "phải già qua Phải PHẢI "},
+		{name: "start_needs_more", quick: start, keys: "f ", text: "f "},
+		{name: "end", quick: end, keys: "dog cagf caks nhah DOG ", text: "dong càng cách nhanh DONG "},
+		{name: "end_tab", quick: end, keys: "caks\t", text: "cách\t"},
+		{name: "end_consonants_kept", quick: end, keys: "thanh nghieng ", text: "thanh nghieng "},
+		{name: "off", keys: "ccaf dog fair ", text: "ccaf dog fair "},
+		{name: "valid_word_wins", quick: start, w: standaloneWAlways, keys: "wa ", text: "ưa "},
+		{name: "macro_wins", quick: double, macros: [][2]string{{"cc", "xyz"}}, keys: "cc ", text: "xyz "},
+	} {
+		for _, surrounding := range []bool{false, true} {
+			a := newTestApp("Telex", tc.macros, surrounding)
+			a.e.quickDouble, a.e.quickStart, a.e.quickEnd = tc.quick&double != 0, tc.quick&start != 0, tc.quick&end != 0
+			a.e.setStandaloneW(tc.w, bamboo.EstdFlags)
+			a.typeString(tc.keys)
+			if string(a.text) != tc.text {
+				t.Errorf("%s surrounding %v: text %q, want %q", tc.name, surrounding, string(a.text), tc.text)
+			}
+		}
+	}
+}
+
+// What quick typing shows while typing, and the keys it keeps.
+func TestQuickTypingLive(t *testing.T) {
+	for _, surrounding := range []bool{false, true} {
+		shown := func(a *testApp) string {
+			return string(a.text) + a.e.preeditText
+		}
+		a := newTestApp("Telex", nil, surrounding)
+		a.e.quickDouble, a.e.quickEnd = true, true
+		if a.typeString("cc"); shown(a) != "ch" {
+			t.Errorf("surrounding %v: cc shows %q", surrounding, shown(a))
+		}
+		if a.typeString("af"); shown(a) != "chà" {
+			t.Errorf("surrounding %v: ccaf shows %q", surrounding, shown(a))
+		}
+		a.typeString("\b\b\b\bcag")
+		if shown(a) != "cang" {
+			t.Errorf("surrounding %v: cag shows %q", surrounding, shown(a))
+		}
+		if a.typeString("\b"); shown(a) != "ca" {
+			t.Errorf("surrounding %v: BackSpace after cang shows %q", surrounding, shown(a))
+		}
+		a.typeString(" tuwog")
+		if !strings.HasSuffix(shown(a), " tương") {
+			t.Errorf("surrounding %v: tuwog shows %q", surrounding, shown(a))
+		}
+		a = newTestApp("Telex", nil, surrounding)
+		a.e.quickDouble = true
+		a.typeString("ccaf")
+		a.restoreKeyStrokes()
+		if shown(a) != "ccaf" {
+			t.Errorf("surrounding %v: restore key shows %q", surrounding, shown(a))
 		}
 	}
 }
