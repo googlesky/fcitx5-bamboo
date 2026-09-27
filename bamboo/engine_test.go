@@ -499,6 +499,45 @@ func TestQuickTypingLive(t *testing.T) {
 	}
 }
 
+// UniKey toolkit's conversions of a selection.
+func TestTextTransforms(t *testing.T) {
+	var transforms = func(im, text string) map[string]string {
+		var list = newTestApp(im, nil, false).e.textTransforms(text)
+		var m = map[string]string{}
+		for i := 0; i+1 < len(list); i += 2 {
+			m[list[i]] = list[i+1]
+		}
+		return m
+	}
+	var got = transforms("Telex", "Tieengs vieejt, class ĐẸP")
+	for kind, want := range map[string]string{
+		"retype": "Tiếng việt, class ĐẸP",
+		"plain":  "Tieengs vieejt, class DEP",
+		"upper":  "TIEENGS VIEEJT, CLASS ĐẸP",
+		"lower":  "tieengs vieejt, class đẹp",
+		"title":  "Tieengs Vieejt, Class Đẹp",
+	} {
+		if got[kind] != want {
+			t.Errorf("%s: %q, want %q", kind, got[kind], want)
+		}
+	}
+	if got = transforms("VNI", "vie65t"); got["retype"] != "việt" {
+		t.Errorf("VNI retype: %q", got["retype"])
+	}
+	for _, cs := range []string{"TCVN3 (ABC)", "VNI Windows", "VIQR"} {
+		if got = transforms("Telex", bamboo.Encode(cs, "Tiếng Việt")); got[cs] != "Tiếng Việt" {
+			t.Errorf("from %s: %q", cs, got[cs])
+		}
+	}
+	// Only what changes the text is offered.
+	got = transforms("Telex", "việt nam")
+	for _, kind := range []string{"retype", "lower", "TCVN3 (ABC)"} {
+		if _, ok := got[kind]; ok {
+			t.Errorf("%s offered: %q", kind, got[kind])
+		}
+	}
+}
+
 // UniKey and ibus-bamboo macro files.
 func TestParseMacroText(t *testing.T) {
 	var text = "\uFEFF;DO NOT DELETE THIS LINE*** version=1 ***\r\n" +

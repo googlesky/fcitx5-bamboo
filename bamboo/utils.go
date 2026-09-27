@@ -45,10 +45,17 @@ func inKeyList(list []rune, key rune) bool {
 	return false
 }
 
+// Upper case kept: bamboo-core only knows lower case letters.
 func removeDiacritics(text string) string {
 	var runes = []rune(text)
 	for i, r := range runes {
-		runes[i] = bamboo.AddMarkToTonelessChar(bamboo.AddToneToChar(r, 0), 0)
+		var lower = unicode.ToLower(r)
+		if plain := bamboo.AddMarkToTonelessChar(bamboo.AddToneToChar(lower, 0), 0); plain != lower {
+			if unicode.IsUpper(r) {
+				plain = unicode.ToUpper(plain)
+			}
+			runes[i] = plain
+		}
 	}
 	return string(runes)
 }

@@ -77,6 +77,7 @@ public:
     void setInputMode(InputContext *ic, BambooInputMode mode);
 
     Instance *instance() { return instance_; }
+    FCITX_ADDON_DEPENDENCY_LOADER(clipboard, instance_->addonManager());
 
     void reloadConfig() override;
     const Configuration *getConfig() const override { return &config_; }

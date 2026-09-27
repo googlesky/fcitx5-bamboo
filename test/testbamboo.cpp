@@ -89,6 +89,12 @@ public:
         commitStringImpl(text);
     }
 
+    // Selects the last n characters: typing replaces them.
+    void selectBack(size_t n) {
+        anchor_ = text_.size() - n;
+        syncSurrounding();
+    }
+
     // Like an application reporting its text late, if at all.
     void setReportSurrounding(bool report) { reportSurrounding_ = report; }
     void reportText(const std::string &text) {
@@ -114,6 +120,10 @@ public:
 
 protected:
     void commitStringImpl(const std::string &str) override {
+        if (anchor_ < text_.size()) {
+            text_.resize(anchor_);
+        }
+        anchor_ = NoSelection;
         for (auto c : utf8::MakeUTF8CharRange(str)) {
             text_.push_back(c);
         }
@@ -131,12 +141,16 @@ protected:
 private:
     void syncSurrounding() {
         if (reportSurrounding_) {
-            surroundingText().setText(text(), text_.size(), text_.size());
+            surroundingText().setText(text(), text_.size(),
+                                      anchor_ < text_.size() ? anchor_
+                                                             : text_.size());
             updateSurroundingText();
         }
     }
 
+    static constexpr size_t NoSelection = -1;
     std::vector<uint32_t> text_;
+    size_t anchor_ = NoSelection;
     bool reportSurrounding_;
     const char *frontend_;
 };
@@ -501,6 +515,51 @@ void testCapitalizeSentences(Instance *instance) {
     }
 }
 
+// UniKey toolkit's conversions, with the text as the application shows it.
+void testConvert(Instance *instance) {
+    const Key convertKey("Control+Shift+F6");
+    FakeEditor editor(instance, "testapp", PreeditCaps);
+    auto list = [&editor]() { return editor.inputPanel().candidateList(); };
+    // Typed with the input method off.
+    editor.replaceText("xin chaof");
+    FCITX_ASSERT(editor.press(convertKey));
+    FCITX_ASSERT(list() && list()->size() == 3 &&
+                 list()->candidate(0).text().toString() == "chào" &&
+                 list()->candidate(1).text().toString() == "CHAOF")
+        << (list() ? list()->size() : 0);
+    FCITX_ASSERT(editor.press(Key(FcitxKey_1)));
+    FCITX_ASSERT(!list());
+    FCITX_ASSERT(editor.text() == "xin chào") << editor.text();
+    // The word being typed.
+    editor.type(" vieejt");
+    FCITX_ASSERT(editor.press(convertKey));
+    FCITX_ASSERT(list() && list()->candidate(1).text().toString() == "VIỆT");
+    editor.press(Key(FcitxKey_2));
+    FCITX_ASSERT(editor.text() == "xin chào VIỆT") << editor.text();
+    // The selection, Return takes the first.
+    editor.replaceText("abc Tieengs Vieejt");
+    editor.selectBack(14);
+    FCITX_ASSERT(editor.press(convertKey));
+    FCITX_ASSERT(editor.press(Key(FcitxKey_Return)));
+    FCITX_ASSERT(editor.text() == "abc Tiếng Việt") << editor.text();
+    // Pressed again, or Escape, it closes.
+    FCITX_ASSERT(editor.press(convertKey) && list());
+    FCITX_ASSERT(editor.press(convertKey) && !list());
+    FCITX_ASSERT(editor.press(convertKey) && list());
+    FCITX_ASSERT(editor.press(Key(FcitxKey_Escape)) && !list());
+    FCITX_ASSERT(editor.text() == "abc Tiếng Việt") << editor.text();
+    editor.replaceText("123");
+    FCITX_ASSERT(editor.press(convertKey) && !list());
+    FCITX_ASSERT(editor.text() == "123") << editor.text();
+    // An application reporting its text after our commit.
+    editor.type(" ");
+    editor.setReportSurrounding(false);
+    editor.type("vieejt");
+    FCITX_ASSERT(editor.press(convertKey) && list());
+    editor.press(Key(FcitxKey_2));
+    FCITX_ASSERT(editor.text() == "123 VIỆT") << editor.text();
+}
+
 bool hasImportAction(Instance *instance, InputContext *ic) {
     auto *action =
         instance->userInterfaceManager().lookupAction("bamboo-import-macro");
@@ -814,6 +873,7 @@ int main() {
         testStandaloneW(&instance);
         testQuickTyping(&instance);
         testCapitalizeSentences(&instance);
+        testConvert(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

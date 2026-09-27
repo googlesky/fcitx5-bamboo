@@ -322,6 +322,19 @@ func ReadMacroFile(path *C.cchar) **C.char {
 	return toCStringArray(flat)
 }
 
+// Kind, result, kind, result... of UniKey toolkit's conversions of text,
+// see textTransforms.
+//
+//export EngineTextTransforms
+func EngineTextTransforms(engine uintptr, text *C.cchar) **C.char {
+	defer recoverPanic("EngineTextTransforms")
+	var list []string
+	if bambooEngine, ok := cgo.Handle(engine).Value().(*FcitxBambooEngine); ok {
+		list = bambooEngine.textTransforms(C.GoString(text))
+	}
+	return toCStringArray(list)
+}
+
 //export NewDictionary
 func NewDictionary(fd uintptr) uintptr {
 	var data = map[string]bool{}

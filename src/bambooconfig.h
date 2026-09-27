@@ -199,6 +199,13 @@ FCITX_CONFIGURATION(
         _("Choose Typing Mode for Application"),
         {Key(FcitxKey_asciitilde)},
         KeyListConstrain(KeyConstrainFlag::AllowModifierLess)};
+    // UniKey toolkit's key.
+    KeyListOption convertKey{this,
+                             "ConvertKey",
+                             _("Convert the selection or the word before "
+                               "the cursor"),
+                             {Key("Control+Shift+F6")},
+                             KeyListConstrain()};
     // Defaults follow ibus-bamboo. Spell check means restoring the keys of
     // invalid words, SpellCheck only picks the dictionary over the rules.
     Option<bool> autoNonVnRestore{this, "AutoNonVnRestore",

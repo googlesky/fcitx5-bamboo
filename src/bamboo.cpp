@@ -8,6 +8,7 @@
 #include "bamboo.h"
 #include "bambooconfig.h"
 #include <algorithm>
+#include <clipboard_public.h>
 #include <cstdint>
 #include <cstdlib>
 #include <fcitx-config/iniparser.h>
@@ -121,6 +122,56 @@ public:
 private:
     BambooEngine *engine_;
     BambooInputMode mode_;
+};
+
+// One line of at most 40 characters.
+std::string preview(std::string_view text) {
+    std::string line;
+    size_t count = 0;
+    for (auto chr : utf8::MakeUTF8CharRange(text)) {
+        if (count++ == 40) {
+            line += "…";
+            break;
+        }
+        line += chr == '\n' ? std::string(" ") : utf8::UCS4ToUTF8(chr);
+    }
+    return line;
+}
+
+std::string convertLabel(const std::string &kind) {
+    if (kind == "retype") {
+        return _("Typed again with the input method");
+    }
+    if (kind == "plain") {
+        return _("Without diacritics");
+    }
+    if (kind == "upper") {
+        return _("Upper case");
+    }
+    if (kind == "lower") {
+        return _("Lower case");
+    }
+    if (kind == "title") {
+        return _("Capitalized words");
+    }
+    return stringutils::concat(_("From"), " ", kind);
+}
+
+// A conversion offered by the convert key.
+class ConvertCandidateWord : public CandidateWord {
+public:
+    ConvertCandidateWord(BambooState *state, std::string result,
+                         const std::string &label)
+        : CandidateWord(Text(preview(result))), state_(state),
+          result_(std::move(result)) {
+        setComment(Text(label));
+    }
+
+    void select(InputContext *inputContext) const override;
+
+private:
+    BambooState *state_;
+    std::string result_;
 };
 
 // array is nullptr when the Go side recovered from a panic.
@@ -246,10 +297,15 @@ public:
         const bool typingKey = EngineIsTypingKey(bambooEngine_.handle(), sym,
                                                  keyEvent.rawKey().states());
         // Typing fast, the application may report its text late: its text is
-        // only trusted when reported after the last key.
+        // only trusted when reported after the last key, or when that key only
+        // changed the preedit.
         const bool fresh = surroundingFresh_;
         surroundingFresh_ = false;
+        appChanged_ = false;
         handleKey(keyEvent, restoreKey, fresh);
+        if (fresh && keyEvent.filtered() && !appChanged_) {
+            surroundingFresh_ = true;
+        }
         lastKeyToApp_ = !keyEvent.filtered();
         sentenceKeys_ =
             typingKey ? SentenceKeys::Other : nextSentenceKeys(keyEvent.key());
@@ -267,6 +323,11 @@ public:
             !EngineIsTypingKey(bambooEngine_.handle(), sym,
                                keyEvent.rawKey().states())) {
             openPicker();
+            keyEvent.filterAndAccept();
+            return;
+        }
+        if (checkHotkey(keyEvent, *engine_->config().convertKey)) {
+            openConvert(fresh);
             keyEvent.filterAndAccept();
             return;
         }
@@ -332,10 +393,12 @@ public:
         if (const int count = EnginePullDeleteCount(bambooEngine_.handle());
             count > 0) {
             ic_->deleteSurroundingText(-count, count);
+            appChanged_ = true;
         }
         if (char *commit = EnginePullCommit(bambooEngine_.handle())) {
             if (commit[0]) {
                 ic_->commitString(commit);
+                appChanged_ = true;
             }
             free(commit);
         }
@@ -378,9 +441,11 @@ public:
         ic_->updatePreedit();
     }
 
-    void commitBuffer() {
+    // Returns what was committed.
+    std::string commitBuffer() {
         pickerOpen_ = false;
         ic_->inputPanel().reset();
+        std::string committed;
         if (bambooEngine_) {
             // The reason that we do not commit here is we want to force the
             // behavior. When client get unfocused, the framework will try to
@@ -388,11 +453,93 @@ public:
             EngineCommitPreedit(bambooEngine_.handle());
             UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
             if (commit && commit.get()[0]) {
-                ic_->commitString(commit.get());
+                committed = commit.get();
+                ic_->commitString(committed);
+                appChanged_ = true;
             }
         }
         ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
         ic_->updatePreedit();
+        return committed;
+    }
+
+    // UniKey toolkit: conversions of the selection, else of the word before
+    // the cursor, else of the primary selection, to replace it.
+    void openConvert(bool fresh) {
+        const auto committed = commitBuffer();
+        const auto &surroundingText = ic_->surroundingText();
+        std::string text;
+        convertDelete_ = 0;
+        if (fresh &&
+            ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+            surroundingText.isValid()) {
+            if (surroundingText.cursor() != surroundingText.anchor()) {
+                // Our commit replaced it.
+                if (committed.empty()) {
+                    text = surroundingText.selectedText();
+                }
+            } else {
+                // As the application shows it once it has our commit, unless
+                // it reported its text already.
+                const auto before = stringutils::concat(
+                    textBeforeCursor(), surroundingFresh_ ? "" : committed);
+                const auto space = before.find_last_of(" \t\n");
+                text =
+                    before.substr(space == std::string::npos ? 0 : space + 1);
+                convertDelete_ = utf8::length(text);
+            }
+        }
+        if (text.empty() || convertDelete_ > 100) {
+            text.clear();
+            convertDelete_ = 0;
+            if (auto *clipboard = engine_->clipboard()) {
+                text = clipboard->call<IClipboard::primary>(ic_);
+            }
+        }
+        // Keys wait while converting: a whole document would freeze them.
+        if (const auto length = utf8::lengthValidated(text);
+            length != utf8::INVALID_LENGTH && length > 5000) {
+            engine_->instance()->showCustomInputMethodInformation(
+                ic_, _("Too long to convert"));
+            return;
+        }
+        std::vector<std::string> conversions;
+        if (!text.empty() && utf8::validate(text)) {
+            conversions = convertToStringList(
+                EngineTextTransforms(bambooEngine_.handle(), text.c_str()));
+        }
+        if (conversions.empty()) {
+            engine_->instance()->showCustomInputMethodInformation(
+                ic_, _("Nothing to convert"));
+            return;
+        }
+        auto candidates = std::make_unique<CommonCandidateList>();
+        candidates->setLayoutHint(CandidateLayoutHint::Vertical);
+        candidates->setPageSize(10);
+        std::vector<std::string> labels;
+        for (int i = 1; i <= 10; i++) {
+            labels.push_back(stringutils::concat(i % 10, ". "));
+        }
+        candidates->setLabels(labels);
+        for (size_t i = 0; i + 1 < conversions.size(); i += 2) {
+            candidates->append<ConvertCandidateWord>(
+                this, conversions[i + 1], convertLabel(conversions[i]));
+        }
+        candidates->setGlobalCursorIndex(0);
+        ic_->inputPanel().setAuxUp(Text(_("Convert")));
+        ic_->inputPanel().setCandidateList(std::move(candidates));
+        ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+        pickerOpen_ = true;
+    }
+
+    void commitConversion(const std::string &text) {
+        closePicker();
+        appChanged_ = true;
+        if (convertDelete_ > 0) {
+            ic_->deleteSurroundingText(-convertDelete_, convertDelete_);
+        }
+        ic_->commitString(text);
+        convertDelete_ = 0;
     }
 
     // ibus-bamboo's Shift+~ table choosing the typing mode of the program.
@@ -502,6 +649,11 @@ private:
             closePicker();
             return candidates != nullptr;
         }
+        if (checkHotkey(keyEvent, *engine_->config().convertKey)) {
+            closePicker();
+            keyEvent.filterAndAccept();
+            return true;
+        }
         int index = key.digitSelection();
         if (key.check(FcitxKey_Return) || key.check(FcitxKey_KP_Enter)) {
             index = candidates->cursorIndex();
@@ -535,7 +687,17 @@ private:
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
     SentenceKeys sentenceKeys_ = SentenceKeys::Other;
+    // Characters before the cursor a conversion replaces.
+    int convertDelete_ = 0;
+    // We committed or deleted text during this key.
+    bool appChanged_ = false;
 };
+
+namespace {
+void ConvertCandidateWord::select(InputContext * /*inputContext*/) const {
+    state_->commitConversion(result_);
+}
+} // namespace
 
 BambooEngine::BambooEngine(Instance *instance)
     : instance_(instance), factory_([this](InputContext &ic) {
