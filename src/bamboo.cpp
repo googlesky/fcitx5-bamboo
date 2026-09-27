@@ -185,6 +185,8 @@ public:
             .modernStyle = *engine_->config().modernStyle,
             .freeMarking = *engine_->config().freeMarking,
             .spellCheckExceptions = exceptions.data(),
+            .standaloneW =
+                static_cast<int>(*engine_->config().quickTyping->standaloneW),
         };
         EngineSetOption(bambooEngine_.handle(), &option);
     }

@@ -14,6 +14,8 @@ import (
 
 type FcitxBambooEngine struct {
 	preeditor               bamboo.IEngine
+	inputMethod             bamboo.InputMethod // before the options, see setStandaloneW
+	standaloneW             int
 	macroTable              *MacroTable
 	dictionary              map[string]bool
 	autoNonVnRestore        bool
@@ -36,6 +38,7 @@ type FcitxBambooEngine struct {
 func newFcitxBambooEngine(inputMethod bamboo.InputMethod, dictionary map[string]bool, table *MacroTable) *FcitxBambooEngine {
 	return &FcitxBambooEngine{
 		preeditor:        bamboo.NewEngine(inputMethod, bamboo.EstdFlags),
+		inputMethod:      inputMethod,
 		macroTable:       table,
 		dictionary:       dictionary,
 		autoNonVnRestore: true,
@@ -71,6 +74,9 @@ const (
 func (e *FcitxBambooEngine) processKeyEvent(keyVal, state uint32, surrounding bool) bool {
 	if e.getRawKeyLen() == 0 {
 		e.madeUpKeys = false
+	}
+	if e.isWordStartW(keyVal, state) {
+		return e.typeWordStartW(keyVal, state, surrounding)
 	}
 	if surrounding {
 		return e.bsProcessKeyEvent(keyVal, state)

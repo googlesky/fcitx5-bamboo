@@ -137,6 +137,20 @@ FCITX_CONFIGURATION(BambooAppModeList,
                                  {},
                                  ListDisplayOptionAnnotation("Program")};);
 
+// What a W with nothing to mark types. Telex W and Telex 2 type Ư, Always
+// gives it to every Telex, NotAtWordStart types W at word start like UniKey
+// without "Process W at word begin".
+enum class BambooStandaloneW { Default, Always, NotAtWordStart };
+FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooStandaloneW,
+                                 N_("As the input method does"), N_("Ư"),
+                                 N_("Ư, but W at word start"));
+
+FCITX_CONFIGURATION(
+    BambooQuickTyping,
+    OptionWithAnnotation<BambooStandaloneW, BambooStandaloneWI18NAnnotation>
+        standaloneW{this, "StandaloneW", _("W with nothing to mark types"),
+                    BambooStandaloneW::Default};);
+
 FCITX_CONFIGURATION(
     BambooConfig, KeyListOption restoreKeyStroke{this,
                                                  "RestoreKeyStroke",
@@ -187,6 +201,8 @@ FCITX_CONFIGURATION(
                              _("Use oà, _uý (instead of òa, úy)"), false};
     Option<bool> freeMarking{this, "FreeMarking",
                              _("Allow type with more freedom"), true};
+    Option<BambooQuickTyping> quickTyping{this, "QuickTyping",
+                                          _("Quick Typing")};
     Option<bool> displayUnderline{this, "DisplayUnderline",
                                   _("Underline the preedit text"), false};
     SubConfigOption custumKeymap{this, "CustomKeymap", _("Custom Keymap"),

@@ -392,6 +392,28 @@ void testEditWordBeforeCursor(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+void testStandaloneW(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig config;
+    config.setValueByPath("QuickTyping/StandaloneW", "Ư, but W at word start");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("w");
+        FCITX_ASSERT(editor.preedit() == "w") << editor.preedit();
+        editor.type(" nhwng ");
+        FCITX_ASSERT(editor.text() == "w nhưng ") << editor.text();
+    }
+    config.setValueByPath("QuickTyping/StandaloneW",
+                          "As the input method does");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", PreeditCaps);
+        editor.type("nhwng ");
+        FCITX_ASSERT(editor.text() == "nhwng ") << editor.text();
+    }
+}
+
 bool hasImportAction(Instance *instance, InputContext *ic) {
     auto *action =
         instance->userInterfaceManager().lookupAction("bamboo-import-macro");
@@ -702,6 +724,7 @@ int main() {
         testSpellCheckExceptions(&instance);
         testImportMacros(&instance);
         testEditWordBeforeCursor(&instance);
+        testStandaloneW(&instance);
         instance.eventDispatcher().detach();
         instance.exit();
     });

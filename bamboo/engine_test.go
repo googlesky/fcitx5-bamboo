@@ -373,6 +373,46 @@ func TestEditWordBeforeCursorOutput(t *testing.T) {
 	}
 }
 
+// What a w with nothing to mark types, UniKey's "process W at word begin".
+func TestStandaloneW(t *testing.T) {
+	for _, tc := range []struct {
+		name, im string
+		w        int
+		keys     string
+		preedits []string
+		text     string
+	}{
+		{name: "telex", im: "Telex", w: standaloneWDefault, keys: "w", preedits: []string{"w"}},
+		{name: "telex_always", im: "Telex", w: standaloneWAlways, keys: "w", preedits: []string{"ư"}},
+		{name: "telex_always_word", im: "Telex", w: standaloneWAlways, keys: "nhwng ", text: "nhưng "},
+		{name: "telex_always_mark", im: "Telex", w: standaloneWAlways, keys: "tuwong ", text: "tương "},
+		{name: "telex_not_at_start", im: "Telex", w: standaloneWNotAtWordStart, keys: "wnhw", preedits: []string{"w"}},
+		{name: "telex_not_at_start_word", im: "Telex", w: standaloneWNotAtWordStart, keys: "nhwng web ", text: "nhưng web "},
+		{name: "telex_w", im: "Telex W", w: standaloneWDefault, keys: "w", preedits: []string{"ư"}},
+		{name: "telex_w_not_at_start", im: "Telex W", w: standaloneWNotAtWordStart, keys: "wa", preedits: []string{"w", "wa"}},
+		{name: "telex_w_not_at_start_upper", im: "Telex 2", w: standaloneWNotAtWordStart, keys: "W", preedits: []string{"W"}},
+		{name: "vni", im: "VNI", w: standaloneWAlways, keys: "w", preedits: []string{"w"}},
+	} {
+		for _, surrounding := range []bool{false, true} {
+			a := newTestApp(tc.im, nil, surrounding)
+			a.e.setStandaloneW(tc.w, bamboo.EstdFlags)
+			for i, c := range tc.keys {
+				a.press(uint32(c), 0)
+				var shown = a.e.preeditText
+				if surrounding {
+					shown = string(a.text)
+				}
+				if i < len(tc.preedits) && shown != tc.preedits[i] {
+					t.Errorf("%s surrounding %v: after %q shows %q, want %q", tc.name, surrounding, tc.keys[:i+1], shown, tc.preedits[i])
+				}
+			}
+			if tc.text != "" && string(a.text) != tc.text {
+				t.Errorf("%s surrounding %v: text %q, want %q", tc.name, surrounding, string(a.text), tc.text)
+			}
+		}
+	}
+}
+
 // UniKey and ibus-bamboo macro files.
 func TestParseMacroText(t *testing.T) {
 	var text = "\uFEFF;DO NOT DELETE THIS LINE*** version=1 ***\r\n" +

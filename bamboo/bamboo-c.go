@@ -21,6 +21,7 @@ import (
 			bool modernStyle;
 			bool freeMarking;
 			char **spellCheckExceptions;
+			int standaloneW;
 		} FcitxBambooEngineOption;
 	*/
 	"C"
@@ -200,6 +201,7 @@ func EngineSetOption(engine uintptr, option *C.FcitxBambooEngineOption) {
 	} else {
 		flags &= ^bamboo.EfreeToneMarking
 	}
+	bambooEngine.setStandaloneW(int(option.standaloneW), flags)
 	bambooEngine.preeditor.SetFlag(flags)
 }
 
