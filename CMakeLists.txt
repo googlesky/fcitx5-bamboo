@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(fcitx5-bamboo VERSION 1.0.11)
+project(fcitx5-bamboo VERSION 1.1.0)
 
 set(REQUIRED_FCITX_VERSION 5.1.13)
 option(ENABLE_TEST "Build Test" On)
