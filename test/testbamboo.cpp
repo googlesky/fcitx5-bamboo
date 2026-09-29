@@ -157,8 +157,12 @@ protected:
             << "bad delete " << offset << " " << size << " on " << text();
         // Wayland frontends count bytes in their copy of the text, and
         // Chrome deletes around the text it reported last: nothing when it
-        // is not the text anymore.
+        // is not the text anymore, nor around its address bar's suggestion,
+        // a selection it takes from its anchor.
         if (std::string_view(frontend_).starts_with("wayland")) {
+            if (!suggestion_.empty()) {
+                return;
+            }
             std::string before;
             for (auto c : text_) {
                 before += utf8::UCS4ToUTF8(c);
@@ -178,9 +182,13 @@ protected:
     }
     // Like KWin handing a forwarded key to the application.
     void forwardKeyImpl(const ForwardKeyEvent &event) override {
-        if (!event.isRelease() && event.rawKey().check(FcitxKey_BackSpace) &&
-            !text_.empty()) {
-            text_.pop_back();
+        if (!event.isRelease() && event.rawKey().check(FcitxKey_BackSpace)) {
+            // BackSpace takes the suggestion away first.
+            if (!suggestion_.empty()) {
+                suggestion_.clear();
+            } else if (!text_.empty()) {
+                text_.pop_back();
+            }
             syncSurrounding();
         }
     }
@@ -760,14 +768,17 @@ void testNoUnderline(Instance *instance) {
         editor.press(Key(FcitxKey_Return));
         FCITX_ASSERT(editor.text() == "facebook.com\n") << editor.text();
     }
-    {
-        // Tones replace letters before the suggestion.
-        FakeEditor editor(instance, "surrounding", PreeditCaps);
+    for (const char *frontend : {"bambootest", "wayland"}) {
+        // Tones replace letters before the suggestion. Chrome's address bar
+        // takes BackSpace for them: it drops deletions around the
+        // suggestion, "bài" gave "baiài".
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true, frontend);
         editor.setSuggestion(".vn");
         editor.type("vieetj");
-        FCITX_ASSERT(editor.text() == "việt.vn") << editor.text();
+        FCITX_ASSERT(editor.text() == "việt.vn") << frontend << editor.text();
         editor.type(" nam");
-        FCITX_ASSERT(editor.text() == "việt nam.vn") << editor.text();
+        FCITX_ASSERT(editor.text() == "việt nam.vn")
+            << frontend << editor.text();
     }
     config.setValueByPath("DisplayUnderline", "False");
     config.setValueByPath("WaylandBackSpace", "True");

@@ -727,7 +727,19 @@ private:
                 ic_->forwardKey(Key(FcitxKey_BackSpace));
             }
         } else if (count > 0) {
-            ic_->deleteSurroundingText(-count, count);
+            const auto &surroundingText = ic_->surroundingText();
+            if (ic_->frontendName() == "wayland" &&
+                surroundingText.anchor() > surroundingText.cursor()) {
+                // Chrome takes a deletion from the anchor of the selection,
+                // and drops it: its address bar's suggestion is selected
+                // after the cursor. BackSpace takes the suggestion, then the
+                // characters, in order with commits.
+                for (int i = 0; i <= count; i++) {
+                    ic_->forwardKey(Key(FcitxKey_BackSpace));
+                }
+            } else {
+                ic_->deleteSurroundingText(-count, count);
+            }
         }
         if (text.empty()) {
             return;
