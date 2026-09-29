@@ -303,10 +303,12 @@ public:
         // after the cursor is an address bar's suggestion: our commits
         // replace it, Chrome deletes it with the text before it, and Return
         // takes it as long as the word goes in key by key.
+        // Terminals report no text, KWin passes on an empty one for them.
         const auto &surroundingText = ic_->surroundingText();
         if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
             surroundingText.isValid() &&
-            surroundingText.cursor() <= surroundingText.anchor()) {
+            surroundingText.cursor() <= surroundingText.anchor() &&
+            !engine_->isTerminal(ic_)) {
             return Method::Surrounding;
         }
         // KWin hands keys we forward to the application in order with our

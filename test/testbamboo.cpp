@@ -731,6 +731,17 @@ void testNoUnderline(Instance *instance) {
         FCITX_ASSERT(editor.panelPreedit().empty()) << editor.panelPreedit();
     }
     {
+        // KWin passes on an empty surrounding text for terminals, which
+        // report none.
+        FakeEditor editor(instance, "surrounding",
+                          PreeditCaps | CapabilityFlag::Terminal, false,
+                          "wayland");
+        editor.surroundingText().setText("", 0, 0);
+        editor.updateSurroundingText();
+        editor.type("chuwowng trinhf ");
+        FCITX_ASSERT(editor.text() == "chương trình ") << editor.text();
+    }
+    {
         // Other Wayland frontends are not KWin's.
         FakeEditor editor(instance, "surrounding", PreeditCaps, false,
                           "wayland_v2");
