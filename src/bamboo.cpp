@@ -298,17 +298,15 @@ public:
         if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
             return Method::PlainPreedit;
         }
-        // Address bars autocomplete what follows the cursor on every key,
-        // editing their text key by key fights it: the word goes in whole.
-        if (ic_->capabilityFlags().test(CapabilityFlag::Url)) {
-            return Method::PanelPreedit;
-        }
         // Deleting blindly would corrupt text: Wayland frontends claim the
-        // capability for clients that send no surrounding text.
+        // capability for clients that send no surrounding text. A selection
+        // after the cursor is an address bar's suggestion: our commits
+        // replace it, Chrome deletes it with the text before it, and Return
+        // takes it as long as the word goes in key by key.
         const auto &surroundingText = ic_->surroundingText();
         if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
             surroundingText.isValid() &&
-            surroundingText.cursor() == surroundingText.anchor()) {
+            surroundingText.cursor() <= surroundingText.anchor()) {
             return Method::Surrounding;
         }
         // KWin hands keys we forward to the application in order with our
@@ -372,6 +370,14 @@ public:
             return;
         }
         const auto method = this->method();
+        FCITX_BAMBOO_DEBUG()
+            << "key " << keyEvent.key() << " program " << ic_->program()
+            << " frontend " << ic_->frontendName() << " caps 0x" << std::hex
+            << static_cast<uint64_t>(ic_->capabilityFlags()) << std::dec
+            << " method " << static_cast<int>(method) << " surrounding "
+            << ic_->surroundingText().isValid() << " "
+            << ic_->surroundingText().cursor() << "/"
+            << ic_->surroundingText().anchor() << " fresh " << fresh;
         // A word ends the way it started.
         if (method != lastMethod_) {
             commitBuffer();

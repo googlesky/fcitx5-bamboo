@@ -24,9 +24,9 @@ Features following ibus-bamboo:
      Where the application reports the text around the cursor (GTK
      applications, Firefox, Wayland applications) the word is typed and
      fixed in place; when that text is not what was typed, a new word starts
-     instead of deleting text. Address bars autocomplete what follows the
-     cursor on every key, the word is typed in fcitx5's window and goes in
-     whole. Qt applications show the word as preedit
+     instead of deleting text. An address bar's suggestion, selected after
+     the cursor, is replaced as you type and taken by Return. Qt
+     applications show the word as preedit
      without underline, since fcitx5-qt reports its text now and then only.
      Elsewhere (Chromium, Electron and CEF applications on XWayland draw an
      underline under any preedit, terminals) the word shows in fcitx5's

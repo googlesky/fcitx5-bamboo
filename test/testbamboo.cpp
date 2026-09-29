@@ -68,20 +68,37 @@ public:
             return true;
         }
         if (key.check(FcitxKey_BackSpace)) {
-            if (!text_.empty()) {
+            // BackSpace takes the suggestion away first.
+            if (!suggestion_.empty()) {
+                suggestion_.clear();
+            } else if (!text_.empty()) {
                 text_.pop_back();
             }
         } else if (key.check(FcitxKey_Return)) {
+            text_.insert(text_.end(), suggestion_.begin(), suggestion_.end());
+            suggestion_.clear();
             text_.push_back('\n');
         } else if (!key.states().testAny(KeyStates{
                        KeyState::Ctrl, KeyState::Alt, KeyState::Super})) {
             // Control characters like Escape's are not typed.
             if (auto chr = Key::keySymToUnicode(key.sym()); chr >= 0x20) {
                 text_.push_back(chr);
+                suggest();
             }
         }
         syncSurrounding();
         return false;
+    }
+
+    // Like an address bar: after each change the application suggests how
+    // the text goes on, selected after the cursor. Return takes it.
+    void setSuggestion(const std::string &suggestion) {
+        completion_.clear();
+        for (auto c : utf8::MakeUTF8CharRange(suggestion)) {
+            completion_.push_back(c);
+        }
+        suggest();
+        syncSurrounding();
     }
 
     // The application edits its text on its own, like an autocorrection.
@@ -115,6 +132,9 @@ public:
         for (auto c : text_) {
             result += utf8::UCS4ToUTF8(c);
         }
+        for (auto c : suggestion_) {
+            result += utf8::UCS4ToUTF8(c);
+        }
         return result;
     }
     std::string preedit() { return inputPanel().clientPreedit().toString(); }
@@ -130,6 +150,7 @@ protected:
         for (auto c : utf8::MakeUTF8CharRange(str)) {
             text_.push_back(c);
         }
+        suggest();
         syncSurrounding();
     }
     void deleteSurroundingTextImpl(int offset, unsigned int size) override {
@@ -140,7 +161,9 @@ protected:
         }
         FCITX_ASSERT(offset == -static_cast<int>(size) && size <= text_.size())
             << "bad delete " << offset << " " << size << " on " << text();
+        // Chrome deletes the selection too.
         text_.resize(text_.size() - size);
+        suggest();
         syncSurrounding();
     }
     // Like KWin handing a forwarded key to the application.
@@ -154,17 +177,25 @@ protected:
     void updatePreeditImpl() override {}
 
 private:
+    void suggest() {
+        suggestion_ = text_.empty() ? std::vector<uint32_t>{} : completion_;
+    }
+
     void syncSurrounding() {
         if (reportSurrounding_) {
-            surroundingText().setText(text(), text_.size(),
-                                      anchor_ < text_.size() ? anchor_
-                                                             : text_.size());
+            auto anchor = text_.size() + suggestion_.size();
+            if (anchor_ < text_.size()) {
+                anchor = anchor_;
+            }
+            surroundingText().setText(text(), text_.size(), anchor);
             updateSurroundingText();
         }
     }
 
     static constexpr size_t NoSelection = -1;
     std::vector<uint32_t> text_;
+    std::vector<uint32_t> suggestion_; // selected after the cursor
+    std::vector<uint32_t> completion_;
     size_t anchor_ = NoSelection;
     bool reportSurrounding_;
     const char *frontend_;
@@ -665,15 +696,25 @@ void testNoUnderline(Instance *instance) {
         FCITX_ASSERT(editor.text().empty()) << editor.text();
     }
     {
-        // Address bars autocomplete what follows the cursor on every key:
-        // the word is typed in fcitx5's window and goes in whole.
+        // Address bars suggest how the text goes on, selected after the
+        // cursor: the word goes in key by key so that Return takes the
+        // suggestion.
         FakeEditor editor(instance, "surrounding",
                           PreeditCaps | CapabilityFlag::Url);
+        editor.setSuggestion("book.com");
+        editor.type("face");
+        FCITX_ASSERT(editor.text() == "facebook.com") << editor.text();
+        editor.press(Key(FcitxKey_Return));
+        FCITX_ASSERT(editor.text() == "facebook.com\n") << editor.text();
+    }
+    {
+        // Tones replace letters before the suggestion.
+        FakeEditor editor(instance, "surrounding", PreeditCaps);
+        editor.setSuggestion(".vn");
         editor.type("vieetj");
-        FCITX_ASSERT(editor.panelPreedit() == "việt" && editor.text().empty())
-            << editor.panelPreedit() << editor.text();
-        editor.type(" ");
-        FCITX_ASSERT(editor.text() == "việt ") << editor.text();
+        FCITX_ASSERT(editor.text() == "việt.vn") << editor.text();
+        editor.type(" nam");
+        FCITX_ASSERT(editor.text() == "việt nam.vn") << editor.text();
     }
     config.setValueByPath("DisplayUnderline", "False");
     config.setValueByPath("WaylandBackSpace", "True");
