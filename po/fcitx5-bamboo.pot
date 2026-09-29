@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-bamboo\n"
 "Report-Msgid-Bugs-To: https://github.com/googlesky/fcitx5-bamboo-plus/issues\n"
-"POT-Creation-Date: 2026-09-29 13:58+0700\n"
+"POT-Creation-Date: 2026-09-29 14:57+0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -45,7 +45,7 @@ msgstr ""
 msgid "Capitalize the first letter of sentences"
 msgstr ""
 
-#: src/bamboo.cpp:155
+#: src/bamboo.cpp:133
 msgid "Capitalized words"
 msgstr ""
 
@@ -53,7 +53,7 @@ msgstr ""
 msgid "Choose Typing Mode for Application"
 msgstr ""
 
-#: src/bamboo.cpp:571
+#: src/bamboo.cpp:549
 msgid "Convert"
 msgstr ""
 
@@ -98,19 +98,11 @@ msgstr ""
 msgid "Exclude"
 msgstr ""
 
-#: src/bamboo.cpp:157
+#: src/bamboo.cpp:135
 msgid "From"
 msgstr ""
 
-#: src/bamboo.cpp:865
-msgid "Import ibus-bamboo/UniKey macros"
-msgstr ""
-
-#: src/bamboo.cpp:989
-msgid "Imported macros"
-msgstr ""
-
-#: src/bamboo.cpp:786 src/bambooconfig.h:172
+#: src/bamboo.cpp:764 src/bambooconfig.h:172
 msgid "Input Method"
 msgstr ""
 
@@ -118,23 +110,23 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: src/bamboo.cpp:152
+#: src/bamboo.cpp:130
 msgid "Lower case"
 msgstr ""
 
-#: src/bamboo.cpp:854 src/bambooconfig.h:87
+#: src/bamboo.cpp:832 src/bambooconfig.h:87
 msgid "Macro"
 msgstr ""
 
-#: src/bamboo.cpp:1125
+#: src/bamboo.cpp:1061
 msgid "Macro Disabled"
 msgstr ""
 
-#: src/bamboo.cpp:1124
+#: src/bamboo.cpp:1060
 msgid "Macro Enabled"
 msgstr ""
 
-#: src/bamboo.cpp:555
+#: src/bamboo.cpp:533
 msgid "Nothing to convert"
 msgstr ""
 
@@ -142,7 +134,7 @@ msgstr ""
 msgid "Output Charset"
 msgstr ""
 
-#: src/bamboo.cpp:813
+#: src/bamboo.cpp:791
 msgid "Output charset"
 msgstr ""
 
@@ -162,15 +154,15 @@ msgstr ""
 msgid "Restore Key Stroke"
 msgstr ""
 
-#: src/bamboo.cpp:1116
+#: src/bamboo.cpp:1052
 msgid "Spell Check Disabled"
 msgstr ""
 
-#: src/bamboo.cpp:1115
+#: src/bamboo.cpp:1051
 msgid "Spell Check Enabled"
 msgstr ""
 
-#: src/bamboo.cpp:842
+#: src/bamboo.cpp:820
 msgid "Spell check"
 msgstr ""
 
@@ -192,11 +184,11 @@ msgid ""
 "method window"
 msgstr ""
 
-#: src/bamboo.cpp:545
+#: src/bamboo.cpp:523
 msgid "Too long to convert"
 msgstr ""
 
-#: src/bamboo.cpp:143
+#: src/bamboo.cpp:121
 msgid "Typed again with the input method"
 msgstr ""
 
@@ -208,7 +200,7 @@ msgstr ""
 msgid "Typing Mode per Application"
 msgstr ""
 
-#: src/bamboo.cpp:601
+#: src/bamboo.cpp:579
 msgid "Typing mode for"
 msgstr ""
 
@@ -216,7 +208,7 @@ msgstr ""
 msgid "Underline the preedit text"
 msgstr ""
 
-#: src/bamboo.cpp:149
+#: src/bamboo.cpp:127
 msgid "Upper case"
 msgstr ""
 
@@ -240,7 +232,7 @@ msgstr ""
 msgid "W with nothing to mark types"
 msgstr ""
 
-#: src/bamboo.cpp:146
+#: src/bamboo.cpp:124
 msgid "Without diacritics"
 msgstr ""
 

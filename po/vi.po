@@ -167,14 +167,6 @@ msgstr "Esc chuyển sang tiếng Anh (cần cho vim), không tự viết hoa đ
 msgid "Words kept by spell check"
 msgstr "Từ giữ nguyên khi kiểm tra chính tả"
 
-#: src/bamboo.cpp
-msgid "Import ibus-bamboo/UniKey macros"
-msgstr "Nhập gõ tắt từ ibus-bamboo/UniKey"
-
-#: src/bamboo.cpp
-msgid "Imported macros"
-msgstr "Đã nhập gõ tắt"
-
 #: src/bambooconfig.h
 msgid "Edit the word before the cursor"
 msgstr "Sửa từ ngay trước con trỏ"

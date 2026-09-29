@@ -15,7 +15,6 @@
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/charutils.h>
-#include <fcitx-utils/environ.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
@@ -39,12 +38,10 @@
 #include <fcitx/userinterface.h>
 #include <fcitx/userinterfacemanager.h>
 #include <fcntl.h>
-#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -72,25 +69,6 @@ uintptr_t newMacroTable(const BambooMacroTable &macroTable) {
     }
     charArray.push_back(nullptr);
     return NewMacroTable(charArray.data());
-}
-
-// Macro files of ibus-bamboo and fcitx5-unikey that exist.
-std::vector<std::filesystem::path> macroImportFiles() {
-    std::vector<std::filesystem::path> files;
-    if (auto home = getEnvironment("HOME")) {
-        files.push_back(std::filesystem::path(*home) /
-                        ".config/ibus-bamboo/ibus-bamboo.macro.text");
-    }
-    if (const auto &dir =
-            StandardPaths::global().userDirectory(StandardPathsType::PkgConfig);
-        !dir.empty()) {
-        files.push_back(dir / "unikey/macro");
-    }
-    std::erase_if(files, [](const std::filesystem::path &file) {
-        std::error_code ec;
-        return !std::filesystem::is_regular_file(file, ec);
-    });
-    return files;
 }
 
 // At a field or line start, or after '.', '!' or '?' and spaces.
@@ -861,13 +839,6 @@ BambooEngine::BambooEngine(Instance *instance)
             updateMacroAction(ic);
         }));
     uiManager.registerAction("bamboo-macro", macroAction_.get());
-    importMacroAction_ = std::make_unique<SimpleAction>();
-    importMacroAction_->setShortText(_("Import ibus-bamboo/UniKey macros"));
-    importMacroAction_->setIcon("document-import");
-    connections_.emplace_back(
-        importMacroAction_->connect<SimpleAction::Activated>(
-            [this](InputContext *ic) { importMacros(ic); }));
-    uiManager.registerAction("bamboo-import-macro", importMacroAction_.get());
 
     reloadConfig();
     instance_->inputContextManager().registerProperty("bambooState", &factory_);
@@ -958,37 +929,6 @@ const BambooAppMode *BambooEngine::appMode(const std::string &program) const {
     return iter == appModes.end() ? nullptr : &*iter;
 }
 
-void BambooEngine::importMacros(InputContext *ic) {
-    const auto &imName = *config_.inputMethod;
-    auto &table = macroTables_[imName];
-    auto &macros = *table.macros.mutableValue();
-    size_t imported = 0;
-    for (const auto &file : macroImportFiles()) {
-        const auto entries = convertToStringList(ReadMacroFile(file.c_str()));
-        for (size_t i = 0; i + 1 < entries.size(); i += 2) {
-            if (std::ranges::any_of(macros, [&](const BambooKeymap &macro) {
-                    return *macro.key == entries[i];
-                })) {
-                continue;
-            }
-            auto &macro = macros.emplace_back();
-            macro.key.setValue(entries[i]);
-            macro.value.setValue(entries[i + 1]);
-            imported++;
-        }
-    }
-    if (imported) {
-        safeSaveAsIni(table, macroFile(imName));
-        macroTableObject_[imName].reset(newMacroTable(table));
-        config_.macro.setValue(true);
-        saveConfig();
-        refreshEngine();
-        updateMacroAction(ic);
-    }
-    instance_->showCustomInputMethodInformation(
-        ic, stringutils::concat(_("Imported macros"), ": ", imported));
-}
-
 BambooInputMode BambooEngine::inputMode(const std::string &program) const {
     const auto *entry = appMode(program);
     return entry ? *entry->mode : *config_.inputMode;
@@ -1048,10 +988,6 @@ void BambooEngine::activate(const InputMethodEntry &entry,
     statusArea.addAction(StatusGroup::InputMethod, charsetAction_.get());
     statusArea.addAction(StatusGroup::InputMethod, spellCheckAction_.get());
     statusArea.addAction(StatusGroup::InputMethod, macroAction_.get());
-    if (!macroImportFiles().empty()) {
-        statusArea.addAction(StatusGroup::InputMethod,
-                             importMacroAction_.get());
-    }
 }
 
 void BambooEngine::deactivate(const InputMethodEntry &entry,

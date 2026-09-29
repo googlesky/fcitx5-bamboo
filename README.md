@@ -47,7 +47,6 @@ configuration.
   applications reporting themselves as terminals, or flagged so in the modes
   per application.
 - Words kept by spell check, for proper nouns like Krông.
-- The tray menu imports the macros of ibus-bamboo or fcitx5-unikey.
 - After BackSpace, arrows or a click, a key right after a word edits it like
   one being typed: "viêt", BackSpace over the space, then `j` gives "việt".
   It needs the application to report its text (GTK applications through
