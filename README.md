@@ -85,7 +85,7 @@ again to update; it writes the version into the PKGBUILD, so run
 
 ### From source
 
-Requires Fcitx 5.1.13 or newer with its development files, Extra CMake
+Requires Fcitx 5.1.23 or newer with its development files, Extra CMake
 Modules, CMake, gettext and Go.
 
 ```sh

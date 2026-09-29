@@ -108,6 +108,7 @@ public:
 
     // Like an application reporting its text late, if at all.
     void setReportSurrounding(bool report) { reportSurrounding_ = report; }
+    void report() { syncSurrounding(); }
     void reportText(const std::string &text) {
         surroundingText().setText(text, utf8::length(text), utf8::length(text));
         updateSurroundingText();
@@ -152,13 +153,24 @@ protected:
         syncSurrounding();
     }
     void deleteSurroundingTextImpl(int offset, unsigned int size) override {
-        // Wayland frontends delete through their copy of the text.
-        if (std::string_view(frontend_).starts_with("wayland") &&
-            !reportSurrounding_) {
-            return;
-        }
         FCITX_ASSERT(offset == -static_cast<int>(size) && size <= text_.size())
             << "bad delete " << offset << " " << size << " on " << text();
+        // Wayland frontends count bytes in their copy of the text, and
+        // Chrome deletes around the text it reported last: nothing when it
+        // is not the text anymore.
+        if (std::string_view(frontend_).starts_with("wayland")) {
+            std::string before;
+            for (auto c : text_) {
+                before += utf8::UCS4ToUTF8(c);
+            }
+            const auto &copy = surroundingText().text();
+            if (!surroundingText().isValid() ||
+                copy.substr(0, utf8::ncharByteLength(
+                                   copy.begin(), surroundingText().cursor())) !=
+                    before) {
+                return;
+            }
+        }
         // Chrome deletes the selection too.
         text_.resize(text_.size() - size);
         suggest();
@@ -349,6 +361,48 @@ void testInputModes(Instance *instance) {
         editor.replaceText("tx");
         editor.type("o");
         FCITX_ASSERT(editor.text() == "txo") << editor.text();
+    }
+    for (const char *late : {"nguoi", "ngu"}) {
+        // Typing fast, Chrome reports our last edits late, as the word was
+        // or halfway through an edit: keys wait for the report. It deletes
+        // around the text it reported last, "bài" gave "baiài", and a new
+        // word typed "nguòi7" for "người" in VNI.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true,
+                          "wayland");
+        editor.type("nguoi");
+        editor.setReportSurrounding(false);
+        editor.type("f");
+        editor.reportText(late);
+        editor.type("w dd");
+        FCITX_ASSERT(editor.text() == "nguòi") << late << " " << editor.text();
+        editor.setReportSurrounding(true);
+        editor.report();
+        FCITX_ASSERT(editor.text() == "người đ")
+            << late << " " << editor.text();
+    }
+    {
+        // KWin would forward a held shortcut without its modifiers: the
+        // held keys are typed first, as they are, and it goes through.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true,
+                          "wayland");
+        editor.type("abc");
+        editor.setReportSurrounding(false);
+        editor.type("de");
+        FCITX_ASSERT(editor.text() == "abcd") << editor.text();
+        FCITX_ASSERT(!editor.press(Key("Control+v")));
+        FCITX_ASSERT(editor.text() == "abcde") << editor.text();
+    }
+    {
+        // A late report of "cho " does not pass for the next word "o".
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true,
+                          "wayland");
+        editor.type("cho");
+        editor.setReportSurrounding(false);
+        editor.type(" oo");
+        FCITX_ASSERT(editor.text() == "cho o") << editor.text();
+        editor.setReportSurrounding(true);
+        editor.report();
+        FCITX_ASSERT(editor.text() == "cho ô") << editor.text();
     }
     {
         // A word ends the way it started: the application's text is not

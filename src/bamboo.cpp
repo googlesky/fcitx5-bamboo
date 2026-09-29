@@ -11,10 +11,12 @@
 #include <clipboard_public.h>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <fcitx-config/iniparser.h>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/charutils.h>
+#include <fcitx-utils/event.h>
 #include <fcitx-utils/i18n.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
@@ -42,6 +44,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -52,6 +55,9 @@ namespace {
 constexpr std::string_view MacroPrefix = "macro/";
 constexpr std::string_view InputMethodActionPrefix = "bamboo-input-method-";
 constexpr std::string_view CharsetActionPrefix = "bamboo-charset-";
+// How long a key waits for the application to report our last edit, in
+// microseconds. Chrome reports within a few milliseconds.
+constexpr uint64_t HeldKeyTimeout = 150000;
 const std::string CustomKeymapFile = "conf/bamboo-custom-keymap.conf";
 const std::string AppModeFile = "conf/bamboo-app-mode.conf";
 
@@ -303,6 +309,27 @@ public:
         if (!bambooEngine_ || keyEvent.isRelease()) {
             return;
         }
+        if (!heldKeys_.empty()) {
+            // Keys keep their order behind a held one.
+            if (holdable(keyEvent.rawKey())) {
+                heldKeys_.push_back(keyEvent.rawKey());
+                keyEvent.filterAndAccept();
+                return;
+            }
+            // Others would lose their modifiers waiting, the held keys are
+            // typed first.
+            typeHeldKeys();
+        }
+        if (!processKey(keyEvent)) {
+            heldKeys_.push_back(keyEvent.rawKey());
+            keyEvent.filterAndAccept();
+            waitForReport();
+        }
+    }
+
+    // Returns false when the key has to wait for the application to report
+    // our last edit, see waitForReport.
+    bool processKey(KeyEvent &keyEvent, bool mayWait = true) {
         const bool restoreKey =
             keyEvent.key().checkKeyList(*engine_->config().restoreKeyStroke);
         // Like ibus-bamboo, a lone Shift or CapsLock must not end the word.
@@ -310,7 +337,7 @@ public:
         if (!restoreKey &&
             (sym == FcitxKey_Shift_L || sym == FcitxKey_Shift_R ||
              sym == FcitxKey_Caps_Lock)) {
-            return;
+            return true;
         }
         // VIQR types tones with '.' and '?', they end no sentence then.
         const bool typingKey = EngineIsTypingKey(bambooEngine_.handle(), sym,
@@ -319,21 +346,92 @@ public:
         // only trusted when reported after our last change and the last key
         // it got, see changeApplicationText.
         const bool fresh = surroundingFresh_;
-        handleKey(keyEvent, restoreKey, fresh);
+        processing_ = true;
+        const bool handled = handleKey(keyEvent, restoreKey, fresh, mayWait);
+        processing_ = false;
+        if (!handled) {
+            return false;
+        }
         if (!keyEvent.filtered()) {
             surroundingFresh_ = false;
+            if (surroundingWord().empty()) {
+                separator_ = holdable(keyEvent.rawKey())
+                                 ? utf8::UCS4ToUTF8(Key::keySymToUnicode(sym))
+                                 : "";
+            }
         }
         lastKeyToApp_ = !keyEvent.filtered();
         sentenceKeys_ =
             typingKey ? SentenceKeys::Other : nextSentenceKeys(keyEvent.key());
+        return true;
     }
 
-    void surroundingTextUpdated() { surroundingFresh_ = true; }
+    void surroundingTextUpdated() {
+        surroundingFresh_ = true;
+        if (processing_ || releasing_ || !bambooEngine_) {
+            return;
+        }
+        // KWin refreshes the text on every key.
+        const auto &surroundingText = ic_->surroundingText();
+        auto report =
+            std::make_tuple(surroundingText.text(), surroundingText.cursor(),
+                            surroundingText.anchor());
+        if (report == lastReport_) {
+            return;
+        }
+        lastReport_ = std::move(report);
+        const auto word = surroundingWord();
+        const bool inSync = surroundingInSync(word);
+        if (inSync && !word.empty()) {
+            trustReports_ = true;
+            timeouts_ = 0;
+        }
+        if (!heldKeys_.empty()) {
+            if (inSync) {
+                releaseHeldKeys(0);
+            } else if (doneRequests_ < 3) {
+                // This one came before the done we asked for, the report
+                // after our edit may be held back still.
+                doneRequests_++;
+                requestDone();
+            }
+        }
+    }
 
-    void handleKey(KeyEvent &keyEvent, bool restoreKey, bool fresh) {
+    // Types the held keys in order until one has to wait again. The first
+    // forced ones go on anyway, a late report taken for a change of the
+    // application like before keys waited.
+    void releaseHeldKeys(size_t forced) {
+        releasing_ = true;
+        while (!heldKeys_.empty() && bambooEngine_) {
+            const Key key = heldKeys_.front();
+            heldKeys_.pop_front();
+            KeyEvent event(ic_, key);
+            if (!processKey(event, forced == 0)) {
+                heldKeys_.push_front(key);
+                releasing_ = false;
+                waitForReport();
+                return;
+            }
+            if (forced > 0) {
+                forced--;
+            }
+            if (!event.filtered()) {
+                typeForApplication(key);
+            }
+        }
+        releasing_ = false;
+        heldKeys_.clear();
+        if (heldTimeout_) {
+            heldTimeout_->setEnabled(false);
+        }
+    }
+
+    bool handleKey(KeyEvent &keyEvent, bool restoreKey, bool fresh,
+                   bool mayWait) {
         const auto sym = keyEvent.rawKey().sym();
         if (pickerOpen_ && pickerKeyEvent(keyEvent)) {
-            return;
+            return true;
         }
         // A mode of the program can't bring Vietnamese to an excluded field.
         if (checkHotkey(keyEvent, *engine_->config().inputModeSwitchKey) &&
@@ -342,12 +440,12 @@ public:
                                keyEvent.rawKey().states())) {
             openPicker();
             keyEvent.filterAndAccept();
-            return;
+            return true;
         }
         if (checkHotkey(keyEvent, *engine_->config().convertKey)) {
             openConvert(fresh);
             keyEvent.filterAndAccept();
-            return;
+            return true;
         }
         const auto method = this->method();
         FCITX_BAMBOO_DEBUG()
@@ -365,7 +463,7 @@ public:
             ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
         }
         if (method == Method::Exclude) {
-            return;
+            return true;
         }
         // Like VNIKey's vim mode: normal mode commands need plain keys.
         if (keyEvent.key().check(FcitxKey_Escape) &&
@@ -373,13 +471,20 @@ public:
             commitBuffer();
             // Deactivating re-enters this state, process nothing after it.
             engine_->instance()->deactivate();
-            return;
+            return true;
         }
         const bool surrounding =
             method == Method::Surrounding || method == Method::BackSpaces;
-        // The application changed the word (autocorrection, stale surrounding
-        // text): start a new word rather than delete what is not ours.
-        if (method == Method::Surrounding && !surroundingInSync()) {
+        if (method == Method::Surrounding &&
+            !surroundingInSync(surroundingWord())) {
+            // Chrome reports its text late, see waitForReport.
+            if (mayWait && trustReports_ && holdable(keyEvent.rawKey()) &&
+                ic_->frontendName() == "wayland") {
+                return false;
+            }
+            // The application changed the word (autocorrection, a click):
+            // start a new word rather than delete what is not ours.
+            FCITX_BAMBOO_DEBUG() << "surrounding text changed, new word";
             ResetEngine(bambooEngine_.handle());
         }
 
@@ -389,7 +494,7 @@ public:
                 keyEvent.filterAndAccept();
                 flush();
             }
-            return;
+            return true;
         }
 
         // The word before the cursor is only edited after a key the
@@ -412,6 +517,7 @@ public:
             keyEvent.filterAndAccept();
         }
         flush();
+        return true;
     }
 
     // Applies the engine output in order: deletion, commit, preedit.
@@ -420,6 +526,14 @@ public:
         UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
         changeApplicationText(count, commit ? commit.get() : "",
                               lastMethod_ == Method::BackSpaces);
+        // The word ended: the next one comes after what we committed last.
+        if (commit && commit.get()[0] && surroundingWord().empty()) {
+            const std::string_view committed = commit.get();
+            auto last = committed.size();
+            while (last > 0 && (committed[--last] & 0xc0) == 0x80) {
+            }
+            separator_ = committed.substr(last);
+        }
 
         ic_->inputPanel().reset();
         UniqueCPtr<char> preedit(EnginePullPreedit(bambooEngine_.handle()));
@@ -453,6 +567,12 @@ public:
         surroundingFresh_ = false;
         sentenceKeys_ = SentenceKeys::Other;
         pickerOpen_ = false;
+        // Typed where the cursor was, focus or cursor gone elsewhere.
+        heldKeys_.clear();
+        separator_.clear();
+        if (heldTimeout_) {
+            heldTimeout_->setEnabled(false);
+        }
         ic_->inputPanel().reset();
         if (bambooEngine_) {
             ResetEngine(bambooEngine_.handle());
@@ -461,9 +581,13 @@ public:
         ic_->updatePreedit();
     }
 
+    // Leaving the input method, the keys typed with it are typed.
+    void typeHeldKeys() { releaseHeldKeys(heldKeys_.size()); }
+
     // Returns what was committed.
     std::string commitBuffer() {
         pickerOpen_ = false;
+        separator_.clear();
         ic_->inputPanel().reset();
         std::string committed;
         if (bambooEngine_) {
@@ -680,10 +804,82 @@ private:
             0, utf8::ncharByteLength(text.begin(), surroundingText.cursor()));
     }
 
-    bool surroundingInSync() const {
+    // The word as the application shows it.
+    std::string surroundingWord() const {
         UniqueCPtr<char> word(EngineSurroundingWord(bambooEngine_.handle()));
-        return !word || !word.get()[0] ||
-               textBeforeCursor().ends_with(word.get());
+        return word ? word.get() : "";
+    }
+
+    // Whether the text before the cursor ends with the word, and what came
+    // before it: a late report of "cho " passes for "o" otherwise.
+    bool surroundingInSync(const std::string &word) const {
+        return word.empty() || textBeforeCursor().ends_with(
+                                   stringutils::concat(separator_, word));
+    }
+
+    // Chrome reports its text late, typing fast by several keys, and
+    // deletes around the text it reported last, see
+    // ZwpTextInputV3Impl::OnDone: deleting before it reports our last edit
+    // loses the deletion ("bài" gave "baiài"), and starting a new word types
+    // a tone key as a digit ("nguòi7" for "người"). Keys wait for its report
+    // a short while at most, then the application is taken to have changed
+    // its text (a click): a new word starts. Twice in a row, the application
+    // does not report its text right and is not waited for until it does.
+    void waitForReport() {
+        if (!heldTimeout_) {
+            heldTimeout_ = engine_->instance()->eventLoop().addTimeEvent(
+                CLOCK_MONOTONIC, now(CLOCK_MONOTONIC) + HeldKeyTimeout, 1000,
+                [this](EventSourceTime *, uint64_t) {
+                    FCITX_BAMBOO_DEBUG() << "no report of the word in time";
+                    if (++timeouts_ > 1) {
+                        trustReports_ = false;
+                    }
+                    if (bambooEngine_) {
+                        ResetEngine(bambooEngine_.handle());
+                    }
+                    separator_.clear();
+                    releaseHeldKeys(0);
+                    return true;
+                });
+        } else {
+            heldTimeout_->setTime(now(CLOCK_MONOTONIC) + HeldKeyTimeout);
+        }
+        heldTimeout_->setOneShot();
+        doneRequests_ = 0;
+        requestDone();
+    }
+
+    // Chrome reports the text it holds back only after done, which KWin
+    // sends for a preedit update, even an empty one. An empty commit would
+    // delete the selection in GTK entries.
+    void requestDone() {
+        if (ic_->frontendName() == "wayland") {
+            ic_->updatePreedit(true);
+        }
+    }
+
+    // Keys that can wait and be typed later as they were: characters, and a
+    // lone Shift or CapsLock. KWin forwards keys without their modifiers.
+    static bool holdable(const Key &key) {
+        const auto sym = key.sym();
+        if (sym == FcitxKey_Shift_L || sym == FcitxKey_Shift_R ||
+            sym == FcitxKey_Caps_Lock) {
+            return true;
+        }
+        const auto chr = Key::keySymToUnicode(sym);
+        return chr >= 0x20 && chr != 0x7f &&
+               !key.states().testAny(KeyStates{KeyState::Ctrl, KeyState::Alt,
+                                               KeyState::Super, KeyState::Hyper,
+                                               KeyState::Meta});
+    }
+
+    // A held key the input method lets through, its event gone: its
+    // character goes in in order with our commits.
+    void typeForApplication(const Key &key) {
+        if (const auto chr = Key::keySymToUnicode(key.sym());
+            chr >= 0x20 && chr != 0x7f) {
+            changeApplicationText(0, utf8::UCS4ToUTF8(chr));
+        }
     }
 
     // Returns false when the key should go on as normal typing.
@@ -733,6 +929,19 @@ private:
     Method lastMethod_ = Method::Preedit;
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
+    bool processing_ = false;
+    bool releasing_ = false;
+    // What the application got right before the word, see
+    // surroundingInSync.
+    std::string separator_;
+    std::tuple<std::string, unsigned int, unsigned int> lastReport_;
+    bool trustReports_ = true;
+    int timeouts_ = 0;
+    int doneRequests_ = 0;
+    // Keys waiting for the application to report our last edit, oldest
+    // first, see waitForReport.
+    std::deque<Key> heldKeys_;
+    std::unique_ptr<EventSourceTime> heldTimeout_;
     SentenceKeys sentenceKeys_ = SentenceKeys::Other;
     // Characters before the cursor a conversion replaces.
     int convertDelete_ = 0;
@@ -1005,6 +1214,7 @@ void BambooEngine::deactivate(const InputMethodEntry &entry,
     FCITX_UNUSED(entry);
     auto *state = event.inputContext()->propertyFor(&factory_);
     if (event.type() != EventType::InputContextFocusOut) {
+        state->typeHeldKeys();
         state->commitBuffer();
     } else {
         state->reset();
