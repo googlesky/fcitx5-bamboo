@@ -32,8 +32,9 @@ current application (press it twice to type `~`):
      fcitx5-qt reports its text now and then only.
    - Elsewhere the word shows in Fcitx's window: Chromium, Electron and CEF
      applications on XWayland, which underline any preedit, and terminals.
-     The option *WaylandBackSpace* (off by default) types into Wayland
-     terminals through KWin with BackSpace keys instead.
+     The option "Surrounding Text in Wayland apps without text: edit with
+     BackSpace", off by default, types the word into Wayland terminals on
+     KWin instead, fixing it with BackSpace keys.
 3. **Exclude**: no Vietnamese in this application.
 
 The default mode, the modes per application and the key are in the
@@ -52,10 +53,11 @@ configuration.
   It needs the application to report its text (GTK applications through
   fcitx5-gtk), and is left out on Wayland frontends.
 - Quick Typing, off by default: what a lone `w` types (ư, or w at word start
-  like UniKey's "Process W at word begin") and OpenKey's quick consonants:
-  cc→ch gg→gi kk→kh nn→ng pp→ph qq→qu tt→th, f→ph j→gi w→qu at word start,
-  g→ng h→nh k→ch at word end. They apply only when the keys typed make no
-  Vietnamese word, yet English words such as "bag" still become "bang".
+  like UniKey with "Process W at word begin" off) and OpenKey's quick
+  consonants: cc→ch gg→gi kk→kh nn→ng pp→ph qq→qu tt→th, f→ph j→gi w→qu at
+  word start, g→ng h→nh k→ch at word end. They apply only when the keys typed
+  make no Vietnamese word, yet English words such as "bag" still become
+  "bang".
 - Capitalize the first letter of sentences, off by default.
 - `Control+Shift+F6` converts the selection, else the word before the cursor,
   else the primary selection, like UniKey's toolkit: typed again with the
@@ -77,7 +79,9 @@ makepkg -si
 ```
 
 The package `fcitx5-bamboo-plus-git` builds the latest commit, runs the tests
-and replaces `fcitx5-bamboo`. Log out and back in to use it.
+and replaces `fcitx5-bamboo`. Log out and back in to use it. Run `makepkg -si`
+again to update; it writes the version into the PKGBUILD, so run
+`git checkout PKGBUILD && git pull` first.
 
 ### From source
 
@@ -107,7 +111,7 @@ underline.
 ## Development
 
 ```sh
-cmake -B build -G Ninja
+cmake -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
