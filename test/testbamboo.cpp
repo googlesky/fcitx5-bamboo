@@ -4,9 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
  */
-#include <algorithm>
 #include <cstdint>
-#include <cstdlib>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/capabilityflags.h>
 #include <fcitx-utils/eventdispatcher.h>
