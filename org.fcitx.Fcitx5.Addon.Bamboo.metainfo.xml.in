@@ -3,7 +3,7 @@
   <id>org.fcitx.Fcitx5.Addon.Bamboo</id>
   <extends>org.fcitx.Fcitx5</extends>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>LGPL-2.1+</project_license>
+  <project_license>LGPL-2.1-or-later</project_license>
   <name>Bamboo</name>
   <summary>Vietnamese input method</summary>
   <developer id="org.fcitx-im">
