@@ -6,6 +6,11 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+permissions:
+  contents: read
+  # CodeQL uploads its results.
+  security-events: write
 jobs:
   clang-format:
     name: Check clang-format
@@ -16,7 +21,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm git clang diffutils
           git config --global --add safe.directory $GITHUB_WORKSPACE
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: fcitx/github-actions@clang-format
   check:
     name: Build and test
@@ -39,12 +44,12 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm base-devel clang cmake ninja extra-cmake-modules fmt libuv boost git go
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: fcitx/fcitx5
           path: fcitx5
       - name: Cache fcitx5 data files
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: 'fcitx5/**/*.tar.*'
           key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt')
@@ -56,12 +61,12 @@ jobs:
           cmake-option: >-
             -DENABLE_KEYBOARD=Off -DENABLE_X11=Off -DENABLE_WAYLAND=Off -DENABLE_ENCHANT=Off
             -DENABLE_DBUS=Off -DENABLE_SERVER=Off -DENABLE_EMOJI=Off -DUSE_SYSTEMD=Off
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: fcitx5-bamboo
           submodules: true
       - name: Init CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: cpp,go
           source-root: fcitx5-bamboo
@@ -71,6 +76,6 @@ jobs:
           path: fcitx5-bamboo
       - name: Test
         run: |
-          ctest --test-dir fcitx5-bamboo/build
+          ctest --test-dir fcitx5-bamboo/build --output-on-failure
       - name: CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v4
