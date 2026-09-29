@@ -605,7 +605,17 @@ private:
         } else if (count > 0) {
             ic_->deleteSurroundingText(-count, count);
         }
-        if (!text.empty()) {
+        if (text.empty()) {
+            return;
+        }
+        // Terminals like Alacritty paste a commit longer than a character,
+        // and applications such as Claude Code lose a paste that more keys
+        // follow: characters go in one by one like typed ones.
+        if (engine_->isTerminal(ic_) && utf8::validate(text)) {
+            for (auto chr : utf8::MakeUTF8StringViewRange(text)) {
+                ic_->commitString(std::string(chr));
+            }
+        } else {
             ic_->commitString(text);
         }
     }

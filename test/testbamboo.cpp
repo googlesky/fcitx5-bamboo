@@ -131,11 +131,16 @@ public:
         return result;
     }
     std::string preedit() { return inputPanel().clientPreedit().toString(); }
+    // The most characters committed at once.
+    size_t longestCommit() const { return longestCommit_; }
     // Preedit shown in fcitx5's window.
     std::string panelPreedit() { return inputPanel().preedit().toString(); }
 
 protected:
     void commitStringImpl(const std::string &str) override {
+        if (utf8::length(str) > longestCommit_) {
+            longestCommit_ = utf8::length(str);
+        }
         if (anchor_ < text_.size()) {
             text_.resize(anchor_);
         }
@@ -190,6 +195,7 @@ private:
     std::vector<uint32_t> suggestion_; // selected after the cursor
     std::vector<uint32_t> completion_;
     size_t anchor_ = NoSelection;
+    size_t longestCommit_ = 0;
     bool reportSurrounding_;
     const char *frontend_;
 };
@@ -733,6 +739,9 @@ void testNoUnderline(Instance *instance) {
         editor.updateSurroundingText();
         editor.type("chuwowng trinhf ");
         FCITX_ASSERT(editor.text() == "chương trình ") << editor.text();
+        // Terminals like Alacritty paste longer commits, and applications
+        // such as Claude Code lose a paste that more keys follow.
+        FCITX_ASSERT(editor.longestCommit() == 1) << editor.longestCommit();
     }
     {
         // Other Wayland frontends are not KWin's.
@@ -749,6 +758,15 @@ void testNoUnderline(Instance *instance) {
         editor.type("vieetj");
         FCITX_ASSERT(editor.panelPreedit() == "việt") << editor.panelPreedit();
         FCITX_ASSERT(editor.text().empty()) << editor.text();
+    }
+    {
+        // A whole word goes into a terminal character by character too.
+        FakeEditor editor(instance, "surrounding",
+                          PreeditCaps | CapabilityFlag::Terminal, false,
+                          "wayland");
+        editor.type("vieetj ");
+        FCITX_ASSERT(editor.text() == "việt ") << editor.text();
+        FCITX_ASSERT(editor.longestCommit() == 1) << editor.longestCommit();
     }
     clearList(bamboo, "app_modes", "AppMode");
 }
