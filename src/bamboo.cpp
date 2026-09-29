@@ -298,6 +298,11 @@ public:
         if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
             return Method::PlainPreedit;
         }
+        // Address bars autocomplete what follows the cursor on every key,
+        // editing their text key by key fights it: the word goes in whole.
+        if (ic_->capabilityFlags().test(CapabilityFlag::Url)) {
+            return Method::PanelPreedit;
+        }
         // Deleting blindly would corrupt text: Wayland frontends claim the
         // capability for clients that send no surrounding text.
         const auto &surroundingText = ic_->surroundingText();

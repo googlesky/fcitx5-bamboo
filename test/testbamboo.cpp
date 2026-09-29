@@ -664,6 +664,17 @@ void testNoUnderline(Instance *instance) {
             << editor.preedit();
         FCITX_ASSERT(editor.text().empty()) << editor.text();
     }
+    {
+        // Address bars autocomplete what follows the cursor on every key:
+        // the word is typed in fcitx5's window and goes in whole.
+        FakeEditor editor(instance, "surrounding",
+                          PreeditCaps | CapabilityFlag::Url);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.panelPreedit() == "việt" && editor.text().empty())
+            << editor.panelPreedit() << editor.text();
+        editor.type(" ");
+        FCITX_ASSERT(editor.text() == "việt ") << editor.text();
+    }
     config.setValueByPath("DisplayUnderline", "False");
     config.setValueByPath("WaylandBackSpace", "True");
     bamboo->setConfig(config);
