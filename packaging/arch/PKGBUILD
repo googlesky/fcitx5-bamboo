@@ -1,0 +1,43 @@
+pkgname=fcitx5-bamboo-plus-git
+_pkgname=fcitx5-bamboo-plus
+pkgver=1.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='Vietnamese input method for Fcitx 5: fcitx5-bamboo with ibus-bamboo typing modes'
+arch=('x86_64')
+url='https://github.com/googlesky/fcitx5-bamboo-plus'
+license=('LGPL-2.1-or-later')
+depends=('fcitx5')
+makedepends=('cmake' 'extra-cmake-modules' 'git' 'go' 'ninja')
+provides=('fcitx5-bamboo')
+conflicts=('fcitx5-bamboo' 'fcitx5-bamboo-git')
+source=("git+$url.git"
+        'git+https://github.com/BambooEngine/bamboo-core.git')
+sha256sums=('SKIP' 'SKIP')
+
+pkgver() {
+  cd $_pkgname
+  git describe --long --tags --match 'v[0-9]*' --abbrev=7 | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+prepare() {
+  cd $_pkgname
+  git submodule init
+  git config submodule.bamboo/bamboo-core.url "$srcdir/bamboo-core"
+  git -c protocol.file.allow=always submodule update
+}
+
+build() {
+  cmake -B build -S $_pkgname -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}

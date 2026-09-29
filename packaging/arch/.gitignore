@@ -1,0 +1,4 @@
+# makepkg output
+*
+!PKGBUILD
+!.gitignore
