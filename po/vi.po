@@ -8,8 +8,9 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-bamboo\n"
-"Report-Msgid-Bugs-To: fcitx-dev@googlegroups.com\n"
-"POT-Creation-Date: 2022-11-21 20:25+0000\n"
+"Report-Msgid-Bugs-To: https://github.com/googlesky/fcitx5-bamboo-plus/"
+"issues\n"
+"POT-Creation-Date: 2026-09-29 14:57+0700\n"
 "PO-Revision-Date: 2022-06-04 06:04+0000\n"
 "Last-Translator: Zen Fas, 2022\n"
 "Language-Team: Vietnamese (https://www.transifex.com/fcitx/teams/12005/vi/)\n"
@@ -19,13 +20,21 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/bambooconfig.h:121
+#: src/bambooconfig.h:206
+msgid ""
+"After BackSpace, arrows or a click, a key right after a word edits it like "
+"one being typed"
+msgstr ""
+"Sau khi xóa lùi, dùng phím mũi tên hoặc bấm chuột, phím gõ ngay sau một từ "
+"sẽ sửa từ đó như khi đang gõ"
+
+#: src/bambooconfig.h:235
 msgid "Allow type with more freedom"
 msgstr "Cho phép gõ tự do"
 
-#: src/bambooconfig.h:116
-msgid "Auto restore keys with invalid words"
-msgstr "Tự động khôi phục phím với từ sai"
+#: src/bambooconfig.h:146
+msgid "As the input method does"
+msgstr "Theo kiểu gõ"
 
 #: org.fcitx.Fcitx5.Addon.Bamboo.metainfo.xml.in:7 src/bamboo.conf.in:3
 msgid "Bamboo"
@@ -35,75 +44,191 @@ msgstr "Bamboo"
 msgid "Bamboo Wrapper For Fcitx"
 msgstr "Bộ gõ Bamboo cho Fcitx"
 
-#: src/bambooconfig.h:113
+#: src/bambooconfig.h:230
 msgid "Capitalize Macro"
 msgstr "Gõ tắt chữ hoa"
 
-#: src/bambooconfig.h:89 src/bambooconfig.h:124
+#: src/bambooconfig.h:198
+msgid "Capitalize the first letter of sentences"
+msgstr "Tự viết hoa chữ cái đầu câu"
+
+#: src/bamboo.cpp:133
+msgid "Capitalized words"
+msgstr "Viết Hoa Đầu Từ"
+
+#: src/bambooconfig.h:211
+msgid "Choose Typing Mode for Application"
+msgstr "Phím chọn chế độ gõ cho ứng dụng"
+
+#: src/bamboo.cpp:549
+msgid "Convert"
+msgstr "Chuyển đổi"
+
+#: src/bambooconfig.h:217
+msgid "Convert the selection or the word before the cursor"
+msgstr "Chuyển đổi vùng chọn hoặc từ trước con trỏ"
+
+#: src/bambooconfig.h:98 src/bambooconfig.h:240
 msgid "Custom Keymap"
 msgstr "Bàn phím tùy chỉnh"
 
-#: src/bambooconfig.h:112
+#: src/bambooconfig.h:177
+msgid "Default Typing Mode"
+msgstr "Chế độ gõ mặc định"
+
+#: src/bambooconfig.h:183
+msgid "Disable Vietnamese in email, number and phone fields"
+msgstr "Tắt tiếng Việt trong ô email, số và điện thoại"
+
+#: src/bambooconfig.h:202
+msgid "Edit the word before the cursor"
+msgstr "Sửa từ ngay trước con trỏ"
+
+#: src/bambooconfig.h:229
 msgid "Enable Macro"
 msgstr "Cho phép gõ tắt"
 
-#: src/bambooconfig.h:111
+#: src/bambooconfig.h:224
 msgid "Enable spell check"
 msgstr "Bật kiểm tra chính tả"
 
-#: src/bambooconfig.h:107 src/bamboo.cpp:229
+#: src/bambooconfig.h:195
+msgid "Escape switches to English in terminals and code editors"
+msgstr "Esc chuyển sang tiếng Anh trong terminal và trình soạn code"
+
+#: src/bambooconfig.h:127
+msgid ""
+"Escape switches to English, as vim needs, and sentences are not capitalized"
+msgstr "Esc chuyển sang tiếng Anh (cần cho vim), không tự viết hoa đầu câu"
+
+#: src/bambooconfig.h:113
+msgid "Exclude"
+msgstr "Loại trừ (tắt tiếng Việt)"
+
+#: src/bamboo.cpp:135
+msgid "From"
+msgstr "Từ bảng mã"
+
+#: src/bamboo.cpp:764 src/bambooconfig.h:172
 msgid "Input Method"
 msgstr "Kiểu gõ"
 
-#: src/bambooconfig.h:70
+#: src/bambooconfig.h:79
 msgid "Key"
 msgstr "Phím"
 
-#: src/bambooconfig.h:78 src/bamboo.cpp:297
+#: src/bamboo.cpp:130
+msgid "Lower case"
+msgstr "chữ thường"
+
+#: src/bamboo.cpp:832 src/bambooconfig.h:87
 msgid "Macro"
 msgstr "Gõ tắt"
 
-#: src/bamboo.cpp:454
+#: src/bamboo.cpp:1061
 msgid "Macro Disabled"
 msgstr "Gõ tắt bị tắt"
 
-#: src/bamboo.cpp:453
+#: src/bamboo.cpp:1060
 msgid "Macro Enabled"
 msgstr "Gõ tắt đang mở"
 
-#: src/bambooconfig.h:110
+#: src/bamboo.cpp:533
+msgid "Nothing to convert"
+msgstr "Không có gì để chuyển đổi"
+
+#: src/bambooconfig.h:175
 msgid "Output Charset"
 msgstr "Bảng Mã"
 
-#: src/bamboo.cpp:256
+#: src/bamboo.cpp:791
 msgid "Output charset"
 msgstr "Bảng mã"
 
-#: src/bambooconfig.h:102
+#: src/bambooconfig.h:112
+msgid "Preedit"
+msgstr "Pre-edit"
+
+#: src/bambooconfig.h:117
+msgid "Program"
+msgstr "Chương trình"
+
+#: src/bambooconfig.h:237
+msgid "Quick Typing"
+msgstr "Gõ nhanh"
+
+#: src/bambooconfig.h:167
 msgid "Restore Key Stroke"
 msgstr "Khôi phục phím bấm"
 
-#: src/bamboo.cpp:445
+#: src/bamboo.cpp:1052
 msgid "Spell Check Disabled"
 msgstr "Kiểm tra chính tả bị tắt"
 
-#: src/bamboo.cpp:444
+#: src/bamboo.cpp:1051
 msgid "Spell Check Enabled"
 msgstr "Kiểm tra chính tả đang mở"
 
-#: src/bamboo.cpp:285
+#: src/bamboo.cpp:820
 msgid "Spell check"
 msgstr "Kiểm tra chính tả"
 
+#: src/bambooconfig.h:113
+msgid "Surrounding Text"
+msgstr "Sửa lỗi gạch chân (Surrounding Text)"
+
+#: src/bambooconfig.h:187
+msgid "Surrounding Text in Wayland apps without text: edit with BackSpace"
+msgstr "Sửa lỗi gạch chân ở app Wayland không có text: sửa bằng BackSpace"
+
 #: src/bambooconfig.h:123
+msgid "Terminal or code editor"
+msgstr "Terminal hoặc trình soạn code"
+
+#: src/bambooconfig.h:191
+msgid ""
+"Terminals typing through KWin get the word as text instead of in the input "
+"method window"
+msgstr ""
+"Terminal gõ qua KWin nhận chữ trực tiếp thay vì hiện trong cửa sổ bộ gõ"
+
+#: src/bamboo.cpp:523
+msgid "Too long to convert"
+msgstr "Văn bản quá dài để chuyển đổi"
+
+#: src/bamboo.cpp:121
+msgid "Typed again with the input method"
+msgstr "Gõ lại bằng kiểu gõ đang dùng"
+
+#: src/bambooconfig.h:119
+msgid "Typing Mode"
+msgstr "Chế độ gõ"
+
+#: src/bambooconfig.h:135 src/bambooconfig.h:179
+msgid "Typing Mode per Application"
+msgstr "Chế độ gõ theo ứng dụng"
+
+#: src/bamboo.cpp:579
+msgid "Typing mode for"
+msgstr "Chế độ gõ cho"
+
+#: src/bambooconfig.h:239
 msgid "Underline the preedit text"
 msgstr "Gạch chân từ đang viết"
 
-#: src/bambooconfig.h:119
+#: src/bamboo.cpp:127
+msgid "Upper case"
+msgstr "CHỮ HOA"
+
+#: src/bambooconfig.h:226
+msgid "Use dictionary for spell check"
+msgstr "Dùng từ điển để kiểm tra chính tả"
+
+#: src/bambooconfig.h:233
 msgid "Use oà, _uý (instead of òa, úy)"
 msgstr "Sử dụng oà, _uý (thay vì òa, úy)"
 
-#: src/bambooconfig.h:71
+#: src/bambooconfig.h:80
 msgid "Value"
 msgstr "Giá trị"
 
@@ -111,154 +236,34 @@ msgstr "Giá trị"
 msgid "Vietnamese input method"
 msgstr "Kiểu gõ tiếng Việt"
 
-#: src/bamboo.cpp
-msgid "Typing mode for"
-msgstr "Chế độ gõ cho"
-
-#: src/bambooconfig.h
-msgid "Choose Typing Mode for Application"
-msgstr "Phím chọn chế độ gõ cho ứng dụng"
-
-#: src/bambooconfig.h
-msgid "Default Typing Mode"
-msgstr "Chế độ gõ mặc định"
-
-#: src/bambooconfig.h
-msgid "Exclude"
-msgstr "Loại trừ (tắt tiếng Việt)"
-
-#: src/bambooconfig.h
-msgid "Preedit"
-msgstr "Pre-edit"
-
-#: src/bambooconfig.h
-msgid "Program"
-msgstr "Chương trình"
-
-#: src/bambooconfig.h
-msgid "Surrounding Text"
-msgstr "Sửa lỗi gạch chân (Surrounding Text)"
-
-#: src/bambooconfig.h
-msgid "Typing Mode"
-msgstr "Chế độ gõ"
-
-#: src/bambooconfig.h
-msgid "Typing Mode per Application"
-msgstr "Chế độ gõ theo ứng dụng"
-
-#: src/bambooconfig.h
-msgid "Use dictionary for spell check"
-msgstr "Dùng từ điển để kiểm tra chính tả"
-
-#: src/bambooconfig.h
-msgid "Disable Vietnamese in email, number and phone fields"
-msgstr "Tắt tiếng Việt trong ô email, số và điện thoại"
-
-#: src/bambooconfig.h
-msgid "Terminal or code editor"
-msgstr "Terminal hoặc trình soạn code"
-
-#: src/bambooconfig.h
-msgid "Escape switches to English, as vim needs, and sentences are not capitalized"
-msgstr "Esc chuyển sang tiếng Anh (cần cho vim), không tự viết hoa đầu câu"
-
-#: src/bambooconfig.h
-msgid "Words kept by spell check"
-msgstr "Từ giữ nguyên khi kiểm tra chính tả"
-
-#: src/bambooconfig.h
-msgid "Edit the word before the cursor"
-msgstr "Sửa từ ngay trước con trỏ"
-
-#: src/bambooconfig.h
-msgid "After BackSpace, arrows or a click, a key right after a word edits it like one being typed"
-msgstr "Sau khi xóa lùi, dùng phím mũi tên hoặc bấm chuột, phím gõ ngay sau một từ sẽ sửa từ đó như khi đang gõ"
-
-#: src/bambooconfig.h
-msgid "Quick Typing"
-msgstr "Gõ nhanh"
-
-#: src/bambooconfig.h
+#: src/bambooconfig.h:154
 msgid "W with nothing to mark types"
 msgstr "Phím W đứng riêng gõ ra"
 
-#: src/bambooconfig.h
-msgid "As the input method does"
-msgstr "Theo kiểu gõ"
-
-#: src/bambooconfig.h
-msgid "Ư"
-msgstr "Ư"
-
-#: src/bambooconfig.h
-msgid "Ư, but W at word start"
-msgstr "Ư, nhưng W ở đầu từ"
-
-#: src/bambooconfig.h
-msgid "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
-msgstr "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
-
-#: src/bambooconfig.h
-msgid "f→ph, j→gi, w→qu at word start"
-msgstr "f→ph, j→gi, w→qu ở đầu từ"
-
-#: src/bambooconfig.h
-msgid "g→ng, h→nh, k→ch at word end"
-msgstr "g→ng, h→nh, k→ch ở cuối từ"
-
-#: src/bambooconfig.h
-msgid "Capitalize the first letter of sentences"
-msgstr "Tự viết hoa chữ cái đầu câu"
-
-#: src/bambooconfig.h
-msgid "Convert the selection or the word before the cursor"
-msgstr "Chuyển đổi vùng chọn hoặc từ trước con trỏ"
-
-#: src/bamboo.cpp
-msgid "Convert"
-msgstr "Chuyển đổi"
-
-#: src/bamboo.cpp
-msgid "Typed again with the input method"
-msgstr "Gõ lại bằng kiểu gõ đang dùng"
-
-#: src/bamboo.cpp
+#: src/bamboo.cpp:124
 msgid "Without diacritics"
 msgstr "Bỏ dấu"
 
-#: src/bamboo.cpp
-msgid "Upper case"
-msgstr "CHỮ HOA"
+#: src/bambooconfig.h:228
+msgid "Words kept by spell check"
+msgstr "Từ giữ nguyên khi kiểm tra chính tả"
 
-#: src/bamboo.cpp
-msgid "Lower case"
-msgstr "chữ thường"
+#: src/bambooconfig.h:158
+msgid "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
+msgstr "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
 
-#: src/bamboo.cpp
-msgid "Capitalized words"
-msgstr "Viết Hoa Đầu Từ"
+#: src/bambooconfig.h:160
+msgid "f→ph, j→gi, w→qu at word start"
+msgstr "f→ph, j→gi, w→qu ở đầu từ"
 
-#: src/bamboo.cpp
-msgid "From"
-msgstr "Từ bảng mã"
+#: src/bambooconfig.h:162
+msgid "g→ng, h→nh, k→ch at word end"
+msgstr "g→ng, h→nh, k→ch ở cuối từ"
 
-#: src/bamboo.cpp
-msgid "Nothing to convert"
-msgstr "Không có gì để chuyển đổi"
+#: src/bambooconfig.h:146
+msgid "Ư"
+msgstr "Ư"
 
-#: src/bamboo.cpp
-msgid "Too long to convert"
-msgstr "Văn bản quá dài để chuyển đổi"
-
-#: src/bambooconfig.h
-msgid "Escape switches to English in terminals and code editors"
-msgstr "Esc chuyển sang tiếng Anh trong terminal và trình soạn code"
-
-#: src/bambooconfig.h
-msgid "Surrounding Text in Wayland apps without text: edit with BackSpace"
-msgstr "Sửa lỗi gạch chân ở app Wayland không có text: sửa bằng BackSpace"
-
-#: src/bambooconfig.h
-msgid "Terminals typing through KWin get the word as text instead of in the input method window"
-msgstr "Terminal gõ qua KWin nhận chữ trực tiếp thay vì hiện trong cửa sổ bộ gõ"
+#: src/bambooconfig.h:147
+msgid "Ư, but W at word start"
+msgstr "Ư, nhưng W ở đầu từ"
