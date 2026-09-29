@@ -9,8 +9,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  # CodeQL uploads its results.
-  security-events: write
 jobs:
   clang-format:
     name: Check clang-format
@@ -28,6 +26,10 @@ jobs:
     needs: clang-format
     runs-on: ubuntu-latest
     container: archlinux:latest
+    permissions:
+      contents: read
+      # CodeQL uploads its results.
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
