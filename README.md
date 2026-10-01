@@ -44,6 +44,15 @@ configuration.
 
 - Email, number and phone fields get the keys untouched. The input method
   label is VI, or EN when keys go straight to the application.
+- Password fields get the keys untouched, as Fcitx gives them. Qt Quick
+  reports its own (the lock screen, polkit and Wi-Fi dialogs) as sensitive
+  only, which Fcitx leaves to the input method, and shows the word typed
+  there unmasked: with `QT_IM_MODULE=fcitx` they get the keys untouched too.
+  Through Wayland text input, IBus or XIM they cannot be told from other
+  fields (Chrome marks every field of its incognito windows sensitive).
+  Fcitx's "Allow input method in the password field" brings Vietnamese to
+  password fields, the word masked as Fcitx masks it. Terminals cannot tell
+  a password prompt: switch to English for `sudo`.
 - In terminals and code editors, Escape switches to English as vim needs:
   applications reporting themselves as terminals, or flagged so in the modes
   per application.

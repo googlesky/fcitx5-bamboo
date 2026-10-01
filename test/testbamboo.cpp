@@ -18,6 +18,7 @@
 #include <fcitx/action.h>
 #include <fcitx/addonmanager.h>
 #include <fcitx/event.h>
+#include <fcitx/globalconfig.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/inputmethodentry.h>
@@ -25,7 +26,10 @@
 #include <fcitx/inputmethodmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
+#include <fcitx/text.h>
 #include <fcitx/userinterfacemanager.h>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -992,6 +996,147 @@ void testFieldHints(Instance *instance) {
     bamboo->setConfig(config);
 }
 
+// fcitx5 types plain keys into password fields. Qt Quick reports its own as
+// sensitive only, and draws the preedit there unmasked.
+void testPasswordFields(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    auto *engine = instance->inputMethodEngine("bamboo");
+    const auto *entry = instance->inputMethodManager().entry("bamboo");
+    FCITX_ASSERT(engine && entry);
+    // What fcitx5-qt sends for a TextField in Password echo mode, no text.
+    const CapabilityFlags qtPassword{
+        CapabilityFlag::Preedit, CapabilityFlag::GetIMInfoOnFocus,
+        CapabilityFlag::Sensitive, CapabilityFlag::NoSpellCheck,
+        CapabilityFlag::NoAutoUpperCase};
+    const auto qtText = qtPassword.unset(CapabilityFlag::Sensitive);
+    const CapabilityFlags password{CapabilityFlag::Preedit,
+                                   CapabilityFlag::Password};
+    const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
+    const Key convertKey("Control+Shift+F6");
+    // Whether the debug log has the key typed.
+    const auto logsKeys = [instance](CapabilityFlags caps,
+                                     const char *frontend) {
+        std::ostringstream log;
+        Log::setLogStream(log);
+        {
+            FakeEditor editor(instance, "testapp", caps, false, frontend);
+            editor.type("q");
+        }
+        Log::setLogStream(std::cerr);
+        FCITX_ASSERT(log.str().find("program testapp") != std::string::npos)
+            << log.str();
+        return log.str().find("key Key(q") != std::string::npos;
+    };
+    {
+        FakeEditor editor(instance, "testapp", qtPassword, false);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        // The typing mode key is typed there too, the convert key goes to
+        // the application.
+        editor.press(tilde);
+        FCITX_ASSERT(!editor.press(convertKey) &&
+                     !editor.inputPanel().candidateList());
+        FCITX_ASSERT(editor.text() == "tieengs~") << editor.text();
+    }
+    FCITX_ASSERT(logsKeys(PreeditCaps, "bambootest"));
+    FCITX_ASSERT(!logsKeys(qtPassword, "bambootest"));
+    {
+        // A field becoming a password field mid-word gets the word as it is
+        // then, not shown until the next key.
+        FakeEditor editor(instance, "testapp", qtText, false);
+        editor.type("vieetj");
+        editor.setCapabilityFlags(qtPassword);
+        FCITX_ASSERT(editor.text() == "việt") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        editor.type("s");
+        FCITX_ASSERT(editor.text() == "việts") << editor.text();
+    }
+    {
+        // Fields of another input method, or not focused, are left alone.
+        FakeEditor editor(instance, "testapp", qtText, false);
+        instance->setCurrentInputMethod(&editor, "keyboard-us", true);
+        editor.inputPanel().setAuxUp(Text("other"));
+        editor.setCapabilityFlags(qtPassword);
+        FCITX_ASSERT(editor.inputPanel().auxUp().toString() == "other");
+    }
+    {
+        FakeEditor editor(instance, "testapp", qtText, false);
+        editor.focusOut();
+        editor.inputPanel().setAuxUp(Text("other"));
+        editor.setCapabilityFlags(qtPassword);
+        FCITX_ASSERT(editor.inputPanel().auxUp().toString() == "other");
+    }
+    {
+        // Chrome marks every field of its incognito windows sensitive.
+        FakeEditor editor(instance, "testapp",
+                          PreeditCaps | CapabilityFlag::Sensitive, true,
+                          "wayland");
+        editor.type("tieengs ");
+        FCITX_ASSERT(editor.text() == "tiếng ") << editor.text();
+    }
+    FCITX_ASSERT(!logsKeys(PreeditCaps | CapabilityFlag::Sensitive, "wayland"));
+    // Password fields are not a field hint people turn off.
+    RawConfig config;
+    config.setValueByPath("AutoExcludeFields", "False");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "testapp", qtPassword, false);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.text() == "tieengs") << editor.text();
+    }
+    config.setValueByPath("AutoExcludeFields", "True");
+    bamboo->setConfig(config);
+    // Unless input methods are allowed in password fields.
+    RawConfig global;
+    global.setValueByPath("Behavior/AllowInputMethodForPassword", "True");
+    instance->globalConfig().load(global, true);
+    {
+        FakeEditor editor(instance, "testapp", qtPassword, false);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "VI");
+        editor.type("tieengs");
+        // Masked as fcitx5 masks them, the dots never committed.
+        const auto &preedit = editor.inputPanel().clientPreedit();
+        FCITX_ASSERT(preedit.toString() == "•••••" &&
+                     preedit.formatAt(0).test(TextFormatFlag::DontCommit))
+            << preedit.toString();
+        editor.type(" a");
+        editor.press(tilde);
+        FCITX_ASSERT(editor.text() == "tiếng a~") << editor.text();
+        FCITX_ASSERT(!editor.press(convertKey));
+    }
+    {
+        // Turning normal mid-word, the masked word goes in as typed.
+        FakeEditor editor(instance, "testapp", qtPassword, false);
+        editor.type("tieengs");
+        editor.setCapabilityFlags(qtText);
+        FCITX_ASSERT(editor.text() == "tiếng") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+    }
+    {
+        // fcitx5 masks the preedit of the password fields it knows of as it
+        // sends it, and commits the word when focus goes.
+        FakeEditor editor(instance, "testapp", password, false);
+        editor.type("a");
+        editor.press(tilde);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+        editor.focusOut();
+        FCITX_ASSERT(editor.text() == "a~tiếng") << editor.text();
+    }
+    FCITX_ASSERT(!logsKeys(password, "bambootest"));
+    global.setValueByPath("Behavior/ShowPreeditForPassword", "True");
+    instance->globalConfig().load(global, true);
+    {
+        FakeEditor editor(instance, "testapp", qtPassword, false);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.preedit() == "tiếng") << editor.preedit();
+    }
+    global.setValueByPath("Behavior/AllowInputMethodForPassword", "False");
+    global.setValueByPath("Behavior/ShowPreeditForPassword", "False");
+    instance->globalConfig().load(global, true);
+}
+
 // ibus-bamboo's Shift+~ table choosing the typing mode of the application.
 void testInputModePicker(Instance *instance) {
     const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
@@ -1107,6 +1252,7 @@ int main() {
         testInputModes(&instance);
         testInputModePicker(&instance);
         testFieldHints(&instance);
+        testPasswordFields(&instance);
         testModeLabel(&instance);
         testTerminalEscape(&instance);
         testSpellCheckExceptions(&instance);

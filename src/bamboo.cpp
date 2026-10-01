@@ -30,6 +30,7 @@
 #include <fcitx/addoninstance.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/event.h>
+#include <fcitx/globalconfig.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputmethodentry.h>
@@ -239,9 +240,29 @@ public:
         EngineSetOption(bambooEngine_.handle(), &option);
     }
 
+    // Qt Quick reports its password fields as sensitive only, not hidden:
+    // fcitx5 keeps the input method there, and Qt Quick draws the preedit
+    // unmasked. Wayland frontends mark every field of Chrome's incognito
+    // windows sensitive too, only fcitx5-qt's sensitive fields count.
+    static bool qtPasswordField(CapabilityFlags flags) {
+        return flags.test(CapabilityFlag::GetIMInfoOnFocus) &&
+               flags.test(CapabilityFlag::Sensitive) &&
+               !flags.test(CapabilityFlag::Password);
+    }
+    static bool passwordField(CapabilityFlags flags) {
+        return flags.test(CapabilityFlag::Password) || qtPasswordField(flags);
+    }
+    bool passwordField() const { return passwordField(ic_->capabilityFlags()); }
+
     // Addresses and numbers are never Vietnamese. URL fields are left alone:
-    // browsers' address bars are searched in Vietnamese.
+    // browsers' address bars are searched in Vietnamese. Password fields get
+    // the keys as typed, as fcitx5 gives them unless told otherwise.
     bool excludedField() const {
+        if (passwordField() && !engine_->instance()
+                                    ->globalConfig()
+                                    .allowInputMethodForPassword()) {
+            return true;
+        }
         return *engine_->config().autoExcludeFields &&
                ic_->capabilityFlags().testAny(CapabilityFlags{
                    CapabilityFlag::Email, CapabilityFlag::Digit,
@@ -366,6 +387,19 @@ public:
         return true;
     }
 
+    // A Qt Quick field turning into a password field or back mid-word: the
+    // word goes in now, rather than stay shown unmasked, or masked, until
+    // the next key. fcitx5 handles its Password flag itself, which Wayland
+    // frontends drop and restore when a client resets.
+    void capabilityChanged(CapabilityFlags oldFlags) {
+        if (qtPasswordField(oldFlags) ==
+            qtPasswordField(ic_->capabilityFlags())) {
+            return;
+        }
+        commitBuffer();
+        ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
+    }
+
     void surroundingTextUpdated() {
         surroundingFresh_ = true;
         if (processing_ || releasing_ || !bambooEngine_) {
@@ -434,23 +468,32 @@ public:
             return true;
         }
         // A mode of the program can't bring Vietnamese to an excluded field.
+        // Password fields take these keys as typed: '~' goes into passwords,
+        // and converting would show text from elsewhere.
         if (checkHotkey(keyEvent, *engine_->config().inputModeSwitchKey) &&
-            !ic_->program().empty() && !excludedField() &&
+            !ic_->program().empty() && !excludedField() && !passwordField() &&
             !EngineIsTypingKey(bambooEngine_.handle(), sym,
                                keyEvent.rawKey().states())) {
             openPicker();
             keyEvent.filterAndAccept();
             return true;
         }
-        if (checkHotkey(keyEvent, *engine_->config().convertKey)) {
+        if (checkHotkey(keyEvent, *engine_->config().convertKey) &&
+            !passwordField()) {
             openConvert(fresh);
             keyEvent.filterAndAccept();
             return true;
         }
         const auto method = this->method();
+        // Keys typed into password and sensitive fields stay out of logs.
         FCITX_BAMBOO_DEBUG()
-            << "key " << keyEvent.key() << " program " << ic_->program()
-            << " frontend " << ic_->frontendName() << " caps 0x" << std::hex
+            << "key "
+            << (ic_->capabilityFlags().testAny(
+                    CapabilityFlag::PasswordOrSensitive)
+                    ? Key()
+                    : keyEvent.key())
+            << " program " << ic_->program() << " frontend "
+            << ic_->frontendName() << " caps 0x" << std::hex
             << static_cast<uint64_t>(ic_->capabilityFlags()) << std::dec
             << " method " << static_cast<int>(method) << " surrounding "
             << ic_->surroundingText().isValid() << " "
@@ -546,7 +589,22 @@ public:
                 format = TextFormatFlag::Underline;
             }
             if (utf8::validate(preeditView)) {
-                text.append(std::string(preeditView), format);
+                std::string shown(preeditView);
+                if (qtPasswordField(ic_->capabilityFlags()) &&
+                    !engine_->instance()
+                         ->globalConfig()
+                         .showPreeditForPassword()) {
+                    // fcitx5 masks the preedit of the password fields it
+                    // knows of as it sends it, the word kept for its commit
+                    // when focus goes. Here clients commit the preedit they
+                    // show then, the dots must not be.
+                    shown.clear();
+                    for (auto i = utf8::length(preeditView); i > 0; i--) {
+                        shown += "\xe2\x80\xa2";
+                    }
+                    format |= TextFormatFlag::DontCommit;
+                }
+                text.append(std::move(shown), format);
             }
             text.setCursor(text.textLength());
 
@@ -1080,6 +1138,16 @@ BambooEngine::BambooEngine(Instance *instance)
                 .inputContext()
                 ->propertyFor(&factory_)
                 ->surroundingTextUpdated();
+        }));
+    eventWatchers_.emplace_back(instance_->watchEvent(
+        EventType::InputContextCapabilityChanged,
+        EventWatcherPhase::PostInputMethod, [this](Event &event) {
+            auto &changed = static_cast<CapabilityChangedEvent &>(event);
+            auto *ic = changed.inputContext();
+            if (ic->hasFocus() && instance_->inputMethodEngine(ic) == this) {
+                ic->propertyFor(&factory_)->capabilityChanged(
+                    changed.oldFlags());
+            }
         }));
 }
 
