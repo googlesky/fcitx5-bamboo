@@ -18,6 +18,7 @@ import http.server
 import json
 import os
 import random
+import re
 import shutil
 import signal
 import subprocess
@@ -38,7 +39,7 @@ CODES.update({c: k for c, k in zip("qwertyuiop", range(16, 26))})
 CODES.update({c: k for c, k in zip("asdfghjkl", range(30, 39))})
 CODES.update({c: k for c, k in zip("zxcvbnm", range(44, 51))})
 CODES[" "] = 57
-SHIFT, CTRL, L, RETURN = 42, 29, 38, 28
+SHIFT, CTRL, L, RETURN, TAB = 42, 29, 38, 28, 15
 
 FCITX_PROFILE = """[Groups/0]
 Name=Default
@@ -80,6 +81,28 @@ with open(sys.argv[1], "ab", buffering=0) as log:
             log.write(repr(data).encode() + b"\n")
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
+"""
+
+# A name and a password in Qt Quick: what the password field shows as
+# preedit, and both texts on Return there.
+QML_LOGIN = """import QtQuick
+import QtQuick.Controls
+ApplicationWindow {
+    visible: true
+    Column {
+        TextField {
+            id: name
+            KeyNavigation.tab: password
+            Component.onCompleted: forceActiveFocus()
+        }
+        TextField {
+            id: password
+            echoMode: TextInput.Password
+            onPreeditTextChanged: if (preeditText) console.warn("PREEDIT[" + preeditText + "]")
+            onAccepted: { console.warn("TEXT[" + name.text + "|" + text + "]"); Qt.quit() }
+        }
+    }
+}
 """
 
 
@@ -348,6 +371,44 @@ def test_gtk(session, runs):
     ], runs, attempt)
 
 
+def test_qtquick(session, runs):
+    """Qt Quick through fcitx5-qt: a name, then a password. Qt Quick reports
+    password fields as sensitive only, which fcitx5 leaves to the input
+    method, and shows their preedit unmasked: the keys go in as typed there,
+    nothing shown."""
+    path = os.path.join(session.work, "login.qml")
+    with open(path, "w") as f:
+        f.write(QML_LOGIN)
+
+    def attempt(keys, speed, rng):
+        name, password = keys.split("|")
+        app = subprocess.Popen(["qml6", path], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, text=True,
+                               env=dict(session.env, QT_FORCE_STDERR_LOGGING="1"))
+        time.sleep(2)
+        # fcitx5-qt reports the field Tab focused after keys already queued,
+        # a race fcitx5 has with its own password fields: the password waits.
+        session.keys(key_events(name, *speed, rng)
+                     + ["w100", f"d{TAB}", "w30", f"u{TAB}", "w300"]
+                     + key_events(password, *speed, rng)[4:]
+                     + ["w300", f"d{RETURN}", "w30", f"u{RETURN}"])
+        try:
+            log = app.communicate(timeout=5)[1]
+        except subprocess.TimeoutExpired:
+            app.kill()
+            app.wait()
+            return None
+        if shown := re.findall(r"PREEDIT\[(.*)\]", log):
+            return f"shown {shown}"
+        text = re.findall(r"TEXT\[(.*)\]", log)
+        return text[-1] if text else None
+
+    return run_cases("qtquick", [
+        ("nguoi27 d9i truong72 viet65 khong6|hoang1995 tuan1",
+         "người đi trường việt không|hoang1995 tuan1"),
+    ], runs, attempt)
+
+
 def test_terminal(session, runs):
     """Alacritty, tmux and an application setting Claude Code's terminal
     modes: the text arrives typed, never as a bracketed paste."""
@@ -379,7 +440,7 @@ def test_terminal(session, runs):
 
 
 TESTS = {"chrome": test_chrome, "omnibox": test_omnibox, "gtk": test_gtk,
-         "terminal": test_terminal}
+         "qtquick": test_qtquick, "terminal": test_terminal}
 
 
 def main():

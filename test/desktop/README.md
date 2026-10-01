@@ -1,9 +1,9 @@
 # Typing into real applications
 
-`desktop_test.py` types VNI into Chrome, Chrome's address bar, a GTK entry and
-a terminal application, through a nested KWin with fcitx5 as its input method,
-and checks the text they get. Keys come fast and overlap, like a person
-rolling them: 40 down to 5 ms apart.
+`desktop_test.py` types VNI into Chrome, Chrome's address bar, a GTK entry,
+Qt Quick fields and a terminal application, through a nested KWin with fcitx5
+as its input method, and checks the text they get. Keys come fast and
+overlap, like a person rolling them: 40 down to 5 ms apart.
 
 It is what found the bugs the unit tests model:
 
@@ -12,6 +12,9 @@ It is what found the bugs the unit tests model:
 - Chrome's address bar drops deletions around its inline suggestion.
 - Alacritty sends a commit longer than a character as a bracketed paste, which
   Claude Code drops and opencode reorders when more keys follow.
+- Qt Quick reports password fields as sensitive only, so fcitx5 leaves them
+  to the input method, and shows their preedit unmasked: the password showed
+  as it was typed, and changed where it read as Vietnamese.
 
 Nothing reaches the desktop: KWin renders to a virtual output and runs on a
 D-Bus of its own, fcitx5 gets a configuration of its own, Chrome a profile of
@@ -20,7 +23,8 @@ its own and no host but localhost.
 ## Running
 
 Needs `kwin_wayland`, `fcitx5`, `wayland-scanner`, a C compiler, `uv`, and the
-applications tested: `google-chrome-stable`, `zenity`, `alacritty` and `tmux`.
+applications tested: `google-chrome-stable`, `zenity`, `qml6` with
+fcitx5-qt, `alacritty` and `tmux`.
 
 ```sh
 # All tests, with the libbamboo.so of a build:
