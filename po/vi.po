@@ -37,8 +37,8 @@ msgid ""
 "applications, Input Method Window for any."
 msgstr ""
 "%1 báo chữ chậm, gõ phải chờ nó. Chế độ gõ không phải chờ, trong bảng chế độ "
-"gõ (%2): BackSpace cho ứng dụng nền Chromium, Input Method Window cho mọi "
-"ứng dụng."
+"gõ (%2): Gõ thẳng, sửa bằng BackSpace cho ứng dụng nền Chromium, Hiện trong "
+"cửa sổ bộ gõ cho mọi ứng dụng."
 
 #: src/bambooconfig.h:260
 msgid ""

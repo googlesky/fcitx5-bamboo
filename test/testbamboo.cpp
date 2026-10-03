@@ -1564,13 +1564,15 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
             Log::setLogStream(*log);
         };
     };
-    const auto holds = [&steps, editor](int count) {
+    const auto holds = [&steps, editor, log](int count) {
         for (int i = 0; i < count; i++) {
-            steps.add(0, [editor]() {
+            steps.add(0, [editor, log]() {
+                Log::setLogStream(std::cerr);
                 auto &e = **editor;
                 e.type(" nguoi");
                 e.setReportSurrounding(false);
                 e.type("wf");
+                Log::setLogStream(*log);
             });
             steps.add(300, [editor]() {
                 (*editor)->setReportSurrounding(true);
@@ -1793,9 +1795,9 @@ void testTypingModes(Instance *instance) {
             << engine->subMode(*entry, editor);
     }
     {
-        // Typed over the address selected before the cursor (Shift+Home),
-        // the first key goes in with BackSpace keys, the next ones through
-        // the surrounding text, the word going on.
+        // Typed over an address selected before the cursor, the first key
+        // goes in with BackSpace keys, the next ones through the
+        // surrounding text, the word going on.
         FakeEditor editor(instance, "backspace",
                           PreeditCaps | CapabilityFlag::Url, true, "wayland");
         editor.replaceText("about:blank");

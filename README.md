@@ -47,11 +47,12 @@ current application (press it twice to type `~`):
    do not. It suits Chrome on a loaded machine, where Surrounding Text waits
    for Chrome's late reports; its address bar, which shows its suggestion in
    its report only, gets Surrounding Text in this mode and in Input Method
-   Window. Through fcitx5-qt it is for terminals: Konsole, also in Yakuake
-   and the terminal panels of Dolphin and Kate, which reports no text and
-   asks for neither capitals nor predictions, and those flagged as terminals
-   in the modes per application. DEL characters go with the text, and the
-   terminal needs `FCITX_QT_USE_SYNC=1` in its environment, as in
+   Window where that edits its text in place. Through fcitx5-qt it is for
+   terminals: Konsole, also in Yakuake and the terminal panels of Dolphin and
+   Kate, which reports no text and asks for neither capitals nor
+   predictions, and those flagged as terminals in the modes per application.
+   DEL characters go with the text, and the terminal needs
+   `FCITX_QT_USE_SYNC=1` in its environment, as in
    `Exec=env FCITX_QT_USE_SYNC=1 konsole` in a copy of its desktop file, or
    fcitx5-qt hands it other keys late, a word typed right after Return
    possibly before it. A Qt field asking for neither capitals nor
@@ -71,8 +72,8 @@ Wayland, Alacritty, Qt and GTK applications without Fcitx's modules) and X11
 applications through XIM. Others, through IBus or the input method of other
 compositors, take the default mode. The label of the input method tells what
 the mode does where it does something else, as "VNI (Surrounding Text →
-BackSpace)" in Alacritty. An application whose late reports keep typing
-waiting, five keys in a minute, gets a notification, once, suggesting the
+Input Method Window)" in Alacritty. An application whose late reports keep
+keys waiting, five in a minute, gets a notification, once, suggesting the
 modes that do not wait: BackSpace for Chromium-based applications, Input
 Method Window for any.
 

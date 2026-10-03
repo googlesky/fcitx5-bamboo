@@ -363,12 +363,13 @@ def run_cases(name, cases, runs, attempt):
     return failures
 
 
-def check_methods(session, name, program, since, want):
+def check_methods(session, name, program, since, want, need=frozenset()):
     """A failure unless bamboo typed the keys of program since the mark the
-    ways in want only: its typing mode applied."""
+    ways in want only, and need among them: its typing mode applied."""
     got = session.methods(program, since)
-    ok = bool(got) and got <= want
-    print(f"{name} methods {sorted(got)}: {'ok' if ok else f'FAIL, not {sorted(want)}'}",
+    ok = bool(got) and got <= want and need <= got
+    print(f"{name} methods {sorted(got)}: "
+          f"{'ok' if ok else f'FAIL, not within {sorted(want)} with {sorted(need)}'}",
           flush=True)
     return 0 if ok else 1
 
@@ -388,7 +389,7 @@ def settled(read, still=1.0, timeout=10):
 SURROUNDING, BACKSPACES, PLAIN_PREEDIT = 4, 5, 2
 
 
-def type_into_textarea(session, chrome, runs, name, methods):
+def type_into_textarea(session, chrome, runs, name, methods, selection_methods):
     chrome.call("Page.navigate", url="data:text/html,<textarea id=t autofocus></textarea>")
     time.sleep(2)
     mark = session.log_mark()
@@ -407,13 +408,18 @@ def type_into_textarea(session, chrome, runs, name, methods):
         session.keys(key_events(keys + " ", *speed, rng) + ["w500"])
         return settled(lambda: chrome.js("t.value").strip())
 
-    return run_cases(name, [
+    failures = run_cases(name, [
         ("toi6 d9ang hoc5 bai2 hat1 nguoi72 viet65 nam truong72 d9uoc75",
          "tôi đang học bài hát người việt nam trường được"),
         ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
-    ], runs, attempt) + run_cases(f"{name} selection", [
+    ], runs, attempt) + check_methods(session, name, "google-chrome", mark, methods)
+    mark = session.log_mark()
+    # The point of the case: the first key over the selection with BackSpace.
+    need = {BACKSPACES} if BACKSPACES in selection_methods else set()
+    return failures + run_cases(f"{name} selection", [
         ("d9i hoc5", "chao đi học"),
-    ], runs, over_selection) + check_methods(session, name, "google-chrome", mark, methods)
+    ], runs, over_selection) + check_methods(session, name, "google-chrome", mark,
+                                             selection_methods, need)
 
 
 def type_into_address_bar(session, chrome, runs, name, methods):
@@ -436,8 +442,8 @@ def type_into_address_bar(session, chrome, runs, name, methods):
     def attempt(keys, speed, rng):
         # On a loaded machine the page loading can take the focus back from
         # the address bar: nothing gets the keys, which tells nothing.
-        for attempt in range(3):
-            if attempt:
+        for tries in range(3):
+            if tries:
                 print(f"{name} {keys!r}: no navigation, again", flush=True)
             chrome.call("Page.navigate", url=start)
             time.sleep(0.8)
@@ -464,7 +470,7 @@ def type_into_address_bar(session, chrome, runs, name, methods):
 
 def test_chrome(session, runs):
     return type_into_textarea(session, Chrome(session), runs, "chrome",
-                              {SURROUNDING, BACKSPACES})
+                              {SURROUNDING}, {SURROUNDING, BACKSPACES})
 
 
 def test_omnibox(session, runs):
@@ -476,7 +482,8 @@ def test_chrome_backspace(session, runs):
     address bar gets Surrounding Text for the suggestion."""
     session.add_app_mode("google-chrome", "BackSpace")
     chrome = Chrome(session)
-    return (type_into_textarea(session, chrome, runs, "chrome backspace", {BACKSPACES})
+    return (type_into_textarea(session, chrome, runs, "chrome backspace",
+                               {BACKSPACES}, {BACKSPACES})
             + type_into_address_bar(session, chrome, runs, "omnibox backspace", {SURROUNDING}))
 
 

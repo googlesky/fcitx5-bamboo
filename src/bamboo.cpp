@@ -645,8 +645,9 @@ public:
             << ic_->surroundingText().anchor() << " fresh " << fresh;
         // A word ends the way it started. Typed with BackSpace keys it is in
         // the application already, and goes on through the surrounding text
-        // once that has it: after Control+L the address bar's text is
-        // selected before the cursor, then its suggestion after it.
+        // once that has it: Chrome reports a selection in a text field as
+        // selected before the cursor, the first key typed over it goes in
+        // with BackSpace keys.
         if (method != lastMethod_) {
             if (lastMethod_ != Method::BackSpaces ||
                 method != Method::Surrounding) {
