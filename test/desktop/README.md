@@ -6,7 +6,7 @@ through a nested KWin with fcitx5 as its input method, and checks the text
 they get. Keys come fast and overlap, like a person rolling them: 40 down to
 5 ms apart.
 
-It is what found the bugs the unit tests model:
+It is what found these bugs, which the unit tests model where they can:
 
 - Chrome reports its text late, typing fast, and deletes around the text it
   reported last: "nguòi7" for "người", "baiài" for "bài".

@@ -432,7 +432,7 @@ def test_qtquick(session, runs):
     ], runs, attempt)
 
 
-def type_into_terminal(session, runs, name, terminal):
+def type_into_terminal(session, runs, name, program, terminal):
     """Types into an application setting Claude Code's terminal modes, in
     tmux, in a terminal started with the command line terminal: the text
     arrives as typed, fixed as typed, never as a bracketed paste."""
@@ -442,7 +442,13 @@ def type_into_terminal(session, runs, name, terminal):
     log = os.path.join(session.work, "terminal-input.log")
     tmux = ["tmux", "-L", f"bamboo-desktop-test-{name}", "-f", "/dev/null"]
     session.spawn([*terminal, *tmux, "new-session", f"{sys.executable} {rawlog} {log}"], name)
-    time.sleep(4)
+    session.wait_focus(program)
+    for _ in range(150):
+        panes = subprocess.run([*tmux, "list-panes", "-F", "#{pane_current_command}"],
+                               capture_output=True, text=True).stdout
+        if "python" in panes:
+            break
+        time.sleep(0.2)
 
     def attempt(keys, speed, rng):
         open(log, "w").close()
@@ -467,13 +473,13 @@ def type_into_terminal(session, runs, name, terminal):
 
 def test_terminal(session, runs):
     """Alacritty through KWin: words fixed with forwarded BackSpace keys."""
-    return type_into_terminal(session, runs, "terminal", ["alacritty", "-e"])
+    return type_into_terminal(session, runs, "terminal", "Alacritty", ["alacritty", "-e"])
 
 
 def test_konsole(session, runs):
     """Konsole in the BackSpace mode, through fcitx5-qt: words fixed with DEL
     characters in the commits, keys handled in order in its sync mode."""
-    return type_into_terminal(session, runs, "konsole", [
+    return type_into_terminal(session, runs, "konsole", "konsole", [
         "env", "FCITX_QT_USE_SYNC=1", "konsole", "--separate", "-e"])
 
 
