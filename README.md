@@ -57,7 +57,14 @@ current application (press it twice to type `~`):
 6. **Exclude**: no Vietnamese in this application.
 
 The default mode, the modes per application and the key are in the
-configuration.
+configuration, with modes per kind of application for those without their
+own: Qt applications, Qt terminals reporting no text (Konsole), GTK
+applications, Wayland applications through KWin (Chrome, Electron,
+Alacritty) and X11 applications through XIM. The label of the input method
+tells what the mode does where it does something else, as "VNI (Surrounding
+Text: BackSpace)" in Alacritty. An application in Surrounding Text whose
+late reports keep typing waiting gets a notification, once, suggesting the
+BackSpace mode.
 
 ### More, from UniKey, OpenKey and others
 

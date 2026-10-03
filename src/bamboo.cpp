@@ -276,7 +276,7 @@ public:
     // The mode of the program, Exclude in excluded fields.
     BambooInputMode effectiveMode() const {
         return excludedField() ? BambooInputMode::Exclude
-                               : engine_->inputMode(ic_->program());
+                               : engine_->inputMode(ic_);
     }
 
     // How the word being typed shows. Surrounding Text mode never underlines
@@ -323,12 +323,8 @@ public:
                 return Method::BackSpaces;
             }
             if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
-                return engine_->isTerminal(ic_) ||
-                               !ic_->capabilityFlags().testAny(CapabilityFlags{
-                                   CapabilityFlag::SurroundingText,
-                                   CapabilityFlag::PasswordOrSensitive})
-                           ? Method::BackSpaces
-                           : Method::PlainPreedit;
+                return engine_->isQtTerminal(ic_) ? Method::BackSpaces
+                                                  : Method::PlainPreedit;
             }
             return Method::PanelPreedit;
         case BambooInputMode::SurroundingText:
@@ -878,7 +874,7 @@ public:
         auto candidates = std::make_unique<CommonCandidateList>();
         candidates->setLayoutHint(CandidateLayoutHint::Vertical);
         candidates->setPageSize(8);
-        const auto current = engine_->inputMode(ic_->program());
+        const auto current = engine_->inputMode(ic_);
         std::vector<std::string> labels;
         int cursor = 0;
         for (size_t i = 0; i < BambooInputModeI18NAnnotation::enumLength; i++) {
@@ -1417,9 +1413,42 @@ const BambooAppMode *BambooEngine::appMode(const std::string &program) const {
     return iter == appModes.end() ? nullptr : &*iter;
 }
 
-BambooInputMode BambooEngine::inputMode(const std::string &program) const {
-    const auto *entry = appMode(program);
-    return entry ? *entry->mode : *config_.inputMode;
+// A kind's modes are the typing modes after Default, in their order.
+constexpr bool kindModesFollowInputModes(size_t i = 0) {
+    return i == BambooInputModeI18NAnnotation::enumLength ||
+           (stringutils::literalEqual(_BambooKindMode_Names[i + 1],
+                                      _BambooInputMode_Names[i]) &&
+            kindModesFollowInputModes(i + 1));
+}
+static_assert(BambooKindModeI18NAnnotation::enumLength ==
+                  BambooInputModeI18NAnnotation::enumLength + 1 &&
+              kindModesFollowInputModes());
+
+BambooInputMode BambooEngine::inputMode(const InputContext *ic) const {
+    if (const auto *entry = appMode(ic->program())) {
+        return *entry->mode;
+    }
+    const auto &kinds = *config_.kindModes;
+    auto kind = BambooKindMode::Default;
+    if (ic->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
+        kind = isQtTerminal(ic) ? *kinds.qtTerminals : *kinds.qtApps;
+    } else if (ic->frontendName() == "dbus") {
+        kind = *kinds.gtkApps;
+    } else if (ic->frontendName() == "wayland") {
+        kind = *kinds.waylandApps;
+    } else if (ic->frontendName() == "xim") {
+        kind = *kinds.x11Apps;
+    }
+    return kind == BambooKindMode::Default
+               ? *config_.inputMode
+               : static_cast<BambooInputMode>(static_cast<int>(kind) - 1);
+}
+
+bool BambooEngine::isQtTerminal(const InputContext *ic) const {
+    return ic->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus) &&
+           (isTerminal(ic) || !ic->capabilityFlags().testAny(CapabilityFlags{
+                                  CapabilityFlag::SurroundingText,
+                                  CapabilityFlag::PasswordOrSensitive}));
 }
 
 bool BambooEngine::isTerminal(const InputContext *ic) const {

@@ -124,6 +124,44 @@ FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooInputMode, N_("Preedit"),
                                  N_("Input Method Window"), N_("BackSpace"),
                                  N_("Exclude"));
 
+// The typing mode of a kind of application, Default leaving it to the
+// default typing mode. The others are BambooInputMode's, in its order.
+enum class BambooKindMode {
+    Default,
+    Preedit,
+    SurroundingText,
+    PlainPreedit,
+    InputMethodWindow,
+    BackSpace,
+    Exclude
+};
+FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooKindMode, N_("Default"), N_("Preedit"),
+                                 N_("Surrounding Text"), N_("Plain Preedit"),
+                                 N_("Input Method Window"), N_("BackSpace"),
+                                 N_("Exclude"));
+
+// Applications by how they reach fcitx5, for those without a mode of their
+// own.
+FCITX_CONFIGURATION(
+    BambooKindModes,
+    OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> qtApps{
+        this, "QtApplications", _("Qt applications"), BambooKindMode::Default};
+    OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation>
+        qtTerminals{this, "QtTerminals",
+                    _("Qt terminals reporting no text (Konsole)"),
+                    BambooKindMode::Default};
+    OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> gtkApps{
+        this, "GtkApplications", _("GTK applications"),
+        BambooKindMode::Default};
+    OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation>
+        waylandApps{this, "WaylandApplications",
+                    _("Wayland applications through KWin (Chrome, Electron, "
+                      "Alacritty)"),
+                    BambooKindMode::Default};
+    OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> x11Apps{
+        this, "X11Applications", _("X11 applications through XIM"),
+        BambooKindMode::Default};);
+
 FCITX_CONFIGURATION(
     BambooAppMode,
     Option<std::string> program{this, "Program", _("Program"), ""};
@@ -188,6 +226,8 @@ FCITX_CONFIGURATION(
     OptionWithAnnotation<BambooInputMode, BambooInputModeI18NAnnotation>
         inputMode{this, "DefaultInputMode", _("Default Typing Mode"),
                   BambooInputMode::Preedit};
+    Option<BambooKindModes> kindModes{this, "KindModes",
+                                      _("Typing Mode per Kind of Application")};
     SubConfigOption appModes{this, "AppModes", _("Typing Mode per Application"),
                              "fcitx://config/addon/bamboo/app_modes"};
     Option<bool> autoExcludeFields{

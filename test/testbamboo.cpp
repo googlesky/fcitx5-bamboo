@@ -15,6 +15,7 @@
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/macros.h>
+#include <fcitx-utils/stringutils.h>
 #include <fcitx-utils/testing.h>
 #include <fcitx-utils/textformatflags.h>
 #include <fcitx-utils/utf8.h>
@@ -1518,6 +1519,70 @@ void testTypingModes(Instance *instance) {
     clearList(bamboo, "app_modes", "AppMode");
 }
 
+// Typing modes per kind of application, for applications without their own.
+void testKindModes(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    auto *engine = instance->inputMethodEngine("bamboo");
+    const auto *entry = instance->inputMethodManager().entry("bamboo");
+    FCITX_ASSERT(engine && entry);
+    RawConfig config;
+    config.setValueByPath("KindModes/QtTerminals", "BackSpace");
+    config.setValueByPath("KindModes/QtApplications", "Plain Preedit");
+    config.setValueByPath("KindModes/WaylandApplications",
+                          "Input Method Window");
+    bamboo->setConfig(config);
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "ownmode");
+    appModes.setValueByPath("AppMode/0/Mode", "Exclude");
+    bamboo->setSubConfig("app_modes", appModes);
+    const CapabilityFlags qt{CapabilityFlag::Preedit,
+                             CapabilityFlag::GetIMInfoOnFocus};
+    const auto mode = [engine, entry](FakeEditor &editor) {
+        return engine->subMode(*entry, editor);
+    };
+    {
+        // Konsole reports no text.
+        FakeEditor editor(instance, "kindterminal", qt, false, "dbus");
+        editor.setTerminal();
+        FCITX_ASSERT(mode(editor) == "Telex (BackSpace)") << mode(editor);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.text() == "việt") << editor.text();
+    }
+    {
+        FakeEditor editor(instance, "kindapp",
+                          qt | CapabilityFlag::SurroundingText, true, "dbus");
+        FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
+        // The table opens on it.
+        editor.press(Key(FcitxKey_asciitilde, KeyState::Shift));
+        auto candidates = editor.inputPanel().candidateList();
+        FCITX_ASSERT(candidates && candidates->cursorIndex() == 2 &&
+                     candidates->label(2).toString() == "*. ");
+        editor.press(Key(FcitxKey_Escape));
+    }
+    {
+        FakeEditor editor(instance, "kindweb", PreeditCaps, true, "wayland");
+        FCITX_ASSERT(mode(editor) == "Telex (Input Method Window)")
+            << mode(editor);
+    }
+    {
+        // A mode of its own comes first.
+        FakeEditor editor(instance, "ownmode", qt, false, "dbus");
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+    }
+    {
+        // Left to the default typing mode.
+        FakeEditor editor(instance, "kindgtk", PreeditCaps, true, "dbus");
+        FCITX_ASSERT(mode(editor) == "Telex") << mode(editor);
+    }
+    for (const char *kind :
+         {"QtTerminals", "QtApplications", "WaylandApplications"}) {
+        config.setValueByPath(stringutils::concat("KindModes/", kind),
+                              "Default");
+    }
+    bamboo->setConfig(config);
+    clearList(bamboo, "app_modes", "AppMode");
+}
+
 // ibus-bamboo's Shift+~ table choosing the typing mode of the application.
 void testInputModePicker(Instance *instance) {
     const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
@@ -1653,6 +1718,7 @@ int main() {
         testSpellCheckAction(&instance);
         testInputModes(&instance);
         testTypingModes(&instance);
+        testKindModes(&instance);
         testInputModePicker(&instance);
         testFieldHints(&instance);
         testPasswordFields(&instance);
