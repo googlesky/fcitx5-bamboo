@@ -293,7 +293,17 @@ public:
     };
 
     Method method() const {
-        switch (effectiveMode()) {
+        auto mode = effectiveMode();
+        // An address bar shows its suggestion in its report only, and
+        // composing whole words loses Return to it: when it reports its
+        // text it gets Surrounding Text, which waits for the report.
+        if ((mode == BambooInputMode::BackSpace ||
+             mode == BambooInputMode::InputMethodWindow) &&
+            ic_->capabilityFlags().test(CapabilityFlag::Url) &&
+            ic_->surroundingText().isValid()) {
+            mode = BambooInputMode::SurroundingText;
+        }
+        switch (mode) {
         case BambooInputMode::Exclude:
             return Method::Exclude;
         case BambooInputMode::Preedit:

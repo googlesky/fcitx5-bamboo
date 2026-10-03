@@ -44,8 +44,10 @@ current application (press it twice to type `~`):
    report its text. The keys must reach the application in order with the
    text: on KWin, Chromium-based applications and terminals such as
    Alacritty keep that order, Qt and GTK applications on Wayland text input
-   do not, and Chrome's address bar wants Surrounding Text for its
-   suggestion. Through fcitx5-qt it is for terminals, which report no text
+   do not. It suits Chrome on a loaded machine, where Surrounding Text waits
+   for Chrome's late reports; its address bar, which shows its suggestion in
+   its report only, gets Surrounding Text in this mode and in Input Method
+   Window. Through fcitx5-qt it is for terminals, which report no text
    (Konsole) or are flagged so in the modes per application: DEL characters
    go with the text, and the terminal needs `FCITX_QT_USE_SYNC=1` in its
    environment, as in `Exec=env FCITX_QT_USE_SYNC=1 konsole` in a copy of

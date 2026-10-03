@@ -1428,6 +1428,22 @@ void testTypingModes(Instance *instance) {
         editor.type(" ");
         FCITX_ASSERT(editor.text() == "việt ") << editor.text();
     }
+    {
+        // An address bar's suggestion shows in the report only: it gets
+        // Surrounding Text, which waits for it.
+        FakeEditor editor(instance, "backspace",
+                          PreeditCaps | CapabilityFlag::Url, true, "wayland");
+        editor.setSuggestion("nam");
+        editor.type("vie");
+        editor.setReportSurrounding(false);
+        editor.type("e");
+        // The bar stops suggesting before it reports.
+        editor.setSuggestion("");
+        editor.type("j");
+        editor.setReportSurrounding(true);
+        editor.report();
+        FCITX_ASSERT(editor.text() == "việ") << editor.text();
+    }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
         // Elsewhere forwarded keys may come after our commits.
         FakeEditor editor(instance, "backspace", PreeditCaps, true, frontend);
