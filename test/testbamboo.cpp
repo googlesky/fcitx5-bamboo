@@ -461,6 +461,18 @@ void testInputModes(Instance *instance) {
         FCITX_ASSERT(editor.text() == "abcde") << editor.text();
     }
     {
+        // Return forces held keys out while Chrome is behind: they start a
+        // new word after our last edit, a tone key deletes nothing through
+        // the stale report.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true,
+                          "wayland");
+        editor.type("ab xa");
+        editor.setReportSurrounding(false);
+        editor.type("aas");
+        editor.press(Key(FcitxKey_Return));
+        FCITX_ASSERT(editor.text() == "ab xâas\n") << editor.text();
+    }
+    {
         // A late report of "cho " does not pass for the next word "o".
         FakeEditor editor(instance, "surrounding", PreeditCaps, true,
                           "wayland");
@@ -1268,6 +1280,48 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
         e.setReportSurrounding(true);
         e.report();
         FCITX_ASSERT(e.text() == "đ") << e.text();
+        editor->reset();
+    });
+    // BackSpace took the one letter of a word, the next word comes after the
+    // same space, Chrome reporting the BackSpace but not the next letter.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        auto &e = **editor;
+        e.type("abc x");
+        e.setReportSurrounding(false);
+        e.press(Key(FcitxKey_BackSpace));
+        e.type("dd");
+        e.reportText("abc ");
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        FCITX_ASSERT(e.text() == "abc d") << e.text();
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "abc đ") << e.text();
+        editor->reset();
+    });
+    // Reports no longer trusted after two waits in vain, Chrome stuck on an
+    // old text: a word starts again after our last edit.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        auto &e = **editor;
+        e.type("q");
+        e.setReportSurrounding(false);
+        e.reportText("zz1");
+        e.type("w");
+    });
+    steps.add(200, [editor]() {
+        (*editor)->reportText("zz2");
+        (*editor)->type("e");
+    });
+    steps.add(250, [editor]() {
+        auto &e = **editor;
+        e.reportText("za");
+        e.type(" aas");
+        FCITX_ASSERT(e.text() == "qwe aas") << e.text();
         editor->reset();
     });
     // Reported with our deletion but not the commit after it.

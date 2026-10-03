@@ -383,6 +383,11 @@ public:
         // only trusted when reported after our last change and the last key
         // it got, see changeApplicationText.
         const bool fresh = surroundingFresh_;
+        // BackSpace taking the one letter of a word reported leaves the
+        // text ending with the separator before it.
+        const bool lastLetter = keyEvent.key().check(FcitxKey_BackSpace) &&
+                                utf8::length(surroundingWord()) == 1 &&
+                                surroundingInSync(surroundingWord());
         processing_ = true;
         const bool handled = handleKey(keyEvent, restoreKey, fresh, mayWait);
         processing_ = false;
@@ -391,7 +396,7 @@ public:
         }
         if (!keyEvent.filtered()) {
             surroundingFresh_ = false;
-            if (surroundingWord().empty()) {
+            if (surroundingWord().empty() && !lastLetter) {
                 separator_ = holdable(keyEvent.rawKey())
                                  ? utf8::UCS4ToUTF8(Key::keySymToUnicode(sym))
                                  : "";
@@ -599,10 +604,15 @@ public:
                 return false;
             }
             // The application changed the word (autocorrection, a click):
-            // start a new word rather than delete what is not ours.
+            // start a new word rather than delete what is not ours. Behind
+            // (keys forced through, reports not trusted) it comes after our
+            // last edit, else after the text reported.
             FCITX_BAMBOO_DEBUG() << "surrounding text changed, new word";
+            separator_ = lastCharacter(
+                reportBehind()
+                    ? stringutils::concat(separator_, surroundingWord())
+                    : std::string(textBeforeCursor()));
             ResetEngine(bambooEngine_.handle());
-            separator_.clear();
         }
         if (method == Method::Surrounding) {
             if (surroundingWord().empty()) {
@@ -656,11 +666,7 @@ public:
                               lastMethod_ == Method::BackSpaces);
         // The word ended: the next one comes after what we committed last.
         if (commit && commit.get()[0] && surroundingWord().empty()) {
-            const std::string_view committed = commit.get();
-            auto last = committed.size();
-            while (last > 0 && (committed[--last] & 0xc0) == 0x80) {
-            }
-            separator_ = committed.substr(last);
+            separator_ = lastCharacter(commit.get());
         }
 
         ic_->inputPanel().reset();
@@ -956,6 +962,13 @@ private:
             return startsSentence(textBeforeCursor());
         }
         return sentenceKeys_ == SentenceKeys::Start;
+    }
+
+    static std::string lastCharacter(std::string_view text) {
+        auto last = text.size();
+        while (last > 0 && (text[--last] & 0xc0) == 0x80) {
+        }
+        return std::string(text.substr(last));
     }
 
     // Empty when the application reports no text.
