@@ -1524,7 +1524,7 @@ BambooInputMode BambooEngine::inputMode(InputContext *ic) const {
 // fcitx5-qt drops the SurroundingText flag before every key, the text
 // comes with the next report: on a change, or as a field gets focus (Qt
 // Widgets on a click or Tab, not on a window switch). Konsole reports none
-// and asks for neither capitals nor predictions, password fields too.
+// and asks for neither capitals nor predictions, password and URL fields too.
 bool BambooEngine::isQtTerminal(InputContext *ic) const {
     const auto flags = ic->capabilityFlags();
     if (!flags.test(CapabilityFlag::GetIMInfoOnFocus)) {
@@ -1534,7 +1534,8 @@ bool BambooEngine::isQtTerminal(InputContext *ic) const {
            (!ic->propertyFor(&factory_)->textReported() &&
             flags.test(CapabilityFlag::NoAutoUpperCase) &&
             flags.test(CapabilityFlag::NoSpellCheck) &&
-            !flags.testAny(CapabilityFlag::PasswordOrSensitive));
+            !flags.testAny(CapabilityFlag::PasswordOrSensitive) &&
+            !flags.test(CapabilityFlag::Url));
 }
 
 bool BambooEngine::isTerminal(const InputContext *ic) const {

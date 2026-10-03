@@ -1726,11 +1726,12 @@ void testTypingModes(Instance *instance) {
          {std::pair{qtText, true}, std::pair{qtText, false},
           std::pair{qtTerminal, true},
           std::pair{qtText | CapabilityFlag::NoSpellCheck, false},
-          std::pair{qtText | CapabilityFlag::NoAutoUpperCase, false}}) {
+          std::pair{qtText | CapabilityFlag::NoAutoUpperCase, false},
+          std::pair{qtTerminal | CapabilityFlag::Url, false}}) {
         // Other Qt applications take DEL for a character: fields that
         // reported their text since they got focus, or that ask for
         // capitals or predictions, the text unreported after a window
-        // switch.
+        // switch. URL fields too, Konsole's hints notwithstanding.
         FakeEditor editor(instance, "backspace", caps, true, "dbus");
         editor.focusQt(report);
         editor.type("vieetj");
