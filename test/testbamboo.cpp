@@ -67,8 +67,20 @@ public:
 
     // Returns whether fcitx filtered the key.
     bool press(const Key &key) {
+        if (qt_) {
+            // fcitx5-qt updates the hints before every key, dropping the
+            // flag, and reports the text again once the key is handled.
+            setCapabilityFlags(
+                capabilityFlags().unset(CapabilityFlag::SurroundingText));
+            pressing_ = true;
+        }
         KeyEvent event(this, key);
-        if (keyEvent(event)) {
+        const bool filtered = keyEvent(event);
+        pressing_ = false;
+        if (filtered) {
+            if (qt_) {
+                syncSurrounding();
+            }
             return true;
         }
         if (key.check(FcitxKey_BackSpace)) {
@@ -119,6 +131,20 @@ public:
 
     // Like a terminal: DEL deletes the character before the cursor.
     void setTerminal() { terminal_ = true; }
+
+    // Like fcitx5-qt, focus going to a field of the window, which reports
+    // its text then (Qt Widgets on a click) or not (window switches,
+    // Konsole). The flag goes with the hints updated after focus.
+    void focusQt(bool report) {
+        qt_ = true;
+        focusOut();
+        focusIn();
+        if (report) {
+            syncSurrounding();
+        }
+        setCapabilityFlags(
+            capabilityFlags().unset(CapabilityFlag::SurroundingText));
+    }
 
     // Like an application reporting its text late, if at all.
     void setReportSurrounding(bool report) { reportSurrounding_ = report; }
@@ -224,7 +250,11 @@ private:
     }
 
     void syncSurrounding() {
-        if (reportSurrounding_) {
+        if (reportSurrounding_ && !pressing_) {
+            if (qt_) {
+                setCapabilityFlags(capabilityFlags() |
+                                   CapabilityFlag::SurroundingText);
+            }
             auto anchor = text_.size() + suggestion_.size();
             if (anchor_ < text_.size()) {
                 anchor = anchor_;
@@ -242,6 +272,8 @@ private:
     size_t longestCommit_ = 0;
     int forwardedKeys_ = 0;
     bool terminal_ = false;
+    bool qt_ = false;
+    bool pressing_ = false;
     bool reportSurrounding_;
     const char *frontend_;
 };
@@ -1190,6 +1222,23 @@ void testPasswordFields(Instance *instance) {
         FCITX_ASSERT(!editor.press(convertKey));
     }
     {
+        // In the BackSpace mode too, which gives Konsole DEL characters: Qt
+        // Quick's password fields ask for neither capitals nor predictions
+        // and report no text either.
+        RawConfig appModes;
+        appModes.setValueByPath("AppMode/0/Program", "qtbackspace");
+        appModes.setValueByPath("AppMode/0/Mode", "BackSpace");
+        bamboo->setSubConfig("app_modes", appModes);
+        FakeEditor editor(instance, "qtbackspace", qtPassword, false, "dbus");
+        editor.focusQt(false);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.inputPanel().clientPreedit().toString() ==
+                         "•••••" &&
+                     editor.text().empty())
+            << editor.text();
+        clearList(bamboo, "app_modes", "AppMode");
+    }
+    {
         // Turning normal mid-word, the masked word goes in as typed.
         FakeEditor editor(instance, "testapp", qtPassword, false);
         editor.type("tieengs");
@@ -1445,16 +1494,19 @@ void testTypingModes(Instance *instance) {
         editor.type(" tieengs");
         FCITX_ASSERT(editor.text() == "việt tiếngnam") << editor.text();
     }
-    // What fcitx5-qt sends for Konsole, which reports no text, and for a
-    // text field.
-    const CapabilityFlags qtTerminal{CapabilityFlag::Preedit,
-                                     CapabilityFlag::GetIMInfoOnFocus};
-    const auto qtText = qtTerminal | CapabilityFlag::SurroundingText;
-    for (auto [program, caps] : {std::pair{"backspace", qtTerminal},
-                                 std::pair{"qtterminal", qtText}}) {
+    // What fcitx5-qt sends for a text field, and for Konsole, which reports
+    // no text and asks for neither capitals nor predictions.
+    const CapabilityFlags qtText{CapabilityFlag::Preedit,
+                                 CapabilityFlag::GetIMInfoOnFocus};
+    const auto qtTerminal =
+        qtText | CapabilityFlag::NoAutoUpperCase | CapabilityFlag::NoSpellCheck;
+    for (auto [program, caps, report] :
+         {std::tuple{"backspace", qtTerminal, false},
+          std::tuple{"qtterminal", qtText, true}}) {
         // fcitx5-qt hands forwarded keys over after commits: in a terminal
         // DEL characters go with them.
-        FakeEditor editor(instance, program, caps, false, "dbus");
+        FakeEditor editor(instance, program, caps, report, "dbus");
+        editor.focusQt(report);
         editor.setTerminal();
         editor.type("vieetj");
         FCITX_ASSERT(editor.text() == "việt") << program << editor.text();
@@ -1467,13 +1519,37 @@ void testTypingModes(Instance *instance) {
             << program << editor.text();
         FCITX_ASSERT(editor.forwardedKeys() == 0) << editor.forwardedKeys();
     }
-    {
-        // Other Qt applications take DEL for a character.
-        FakeEditor editor(instance, "backspace", qtText, true, "dbus");
+    for (auto [caps, report] :
+         {std::pair{qtText, true}, std::pair{qtText, false},
+          std::pair{qtTerminal, true},
+          std::pair{qtText | CapabilityFlag::NoSpellCheck, false},
+          std::pair{qtText | CapabilityFlag::NoAutoUpperCase, false}}) {
+        // Other Qt applications take DEL for a character: fields that
+        // reported their text since they got focus, or that ask for
+        // capitals or predictions, the text unreported after a window
+        // switch.
+        FakeEditor editor(instance, "backspace", caps, true, "dbus");
+        editor.focusQt(report);
         editor.type("vieetj");
-        FCITX_ASSERT(editor.preedit() == "việt") << editor.preedit();
+        FCITX_ASSERT(editor.preedit() == "việt")
+            << report << editor.preedit() << editor.text();
         editor.type(" ");
-        FCITX_ASSERT(editor.text() == "việt ") << editor.text();
+        FCITX_ASSERT(editor.text() == "việt ") << report << editor.text();
+    }
+    {
+        // Konsole's search bar, then its terminal, in one window: the text
+        // the bar reported stays, the terminal reports none.
+        FakeEditor editor(instance, "backspace", qtText, true, "dbus");
+        editor.focusQt(true);
+        editor.type("tieengs ");
+        FCITX_ASSERT(editor.text() == "tiếng ") << editor.text();
+        editor.setCapabilityFlags(qtTerminal);
+        editor.setReportSurrounding(false);
+        editor.setTerminal();
+        editor.focusQt(false);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.text() == "tiếng việt") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
     }
     {
         // An address bar's suggestion shows in the report only: it gets
@@ -1542,15 +1618,22 @@ void testKindModes(Instance *instance) {
     };
     {
         // Konsole reports no text.
-        FakeEditor editor(instance, "kindterminal", qt, false, "dbus");
+        FakeEditor editor(instance, "kindterminal",
+                          qt | CapabilityFlag::NoAutoUpperCase |
+                              CapabilityFlag::NoSpellCheck,
+                          false, "dbus");
+        editor.focusQt(false);
         editor.setTerminal();
         FCITX_ASSERT(mode(editor) == "Telex (BackSpace)") << mode(editor);
         editor.type("vieetj");
         FCITX_ASSERT(editor.text() == "việt") << editor.text();
     }
     {
-        FakeEditor editor(instance, "kindapp",
-                          qt | CapabilityFlag::SurroundingText, true, "dbus");
+        FakeEditor editor(instance, "kindapp", qt, true, "dbus");
+        editor.focusQt(true);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.preedit() == "việt" && editor.text().empty())
+            << editor.preedit() << editor.text();
         FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
         // The table opens on it.
         editor.press(Key(FcitxKey_asciitilde, KeyState::Shift));

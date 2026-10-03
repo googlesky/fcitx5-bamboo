@@ -47,13 +47,15 @@ current application (press it twice to type `~`):
    do not. It suits Chrome on a loaded machine, where Surrounding Text waits
    for Chrome's late reports; its address bar, which shows its suggestion in
    its report only, gets Surrounding Text in this mode and in Input Method
-   Window. Through fcitx5-qt it is for terminals, which report no text
-   (Konsole) or are flagged so in the modes per application: DEL characters
-   go with the text, and the terminal needs `FCITX_QT_USE_SYNC=1` in its
-   environment, as in `Exec=env FCITX_QT_USE_SYNC=1 konsole` in a copy of
-   its desktop file, or fcitx5-qt hands it other keys late, a word typed
-   right after Return possibly before it. Other Qt applications get plain
-   preedit, the rest the word in Fcitx's window.
+   Window. Through fcitx5-qt it is for terminals: Konsole, also in Yakuake
+   and the terminal panels of Dolphin and Kate, which reports no text and
+   asks for neither capitals nor predictions, and those flagged as terminals
+   in the modes per application. DEL characters go with the text, and the
+   terminal needs `FCITX_QT_USE_SYNC=1` in its environment, as in
+   `Exec=env FCITX_QT_USE_SYNC=1 konsole` in a copy of its desktop file, or
+   fcitx5-qt hands it other keys late, a word typed right after Return
+   possibly before it. Other Qt applications get plain preedit, the rest the
+   word in Fcitx's window.
 6. **Exclude**: no Vietnamese in this application.
 
 The default mode, the modes per application and the key are in the

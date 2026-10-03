@@ -512,8 +512,14 @@ public:
         ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
     }
 
+    // Whether the focused field reported its text since it got focus, see
+    // BambooEngine::isQtTerminal.
+    bool textReported() const { return textReported_; }
+    void focusIn() { textReported_ = false; }
+
     void surroundingTextUpdated() {
         surroundingFresh_ = true;
+        textReported_ = true;
         if (processing_ || releasing_ || !bambooEngine_) {
             return;
         }
@@ -1176,6 +1182,7 @@ private:
     Method lastMethod_ = Method::Preedit;
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
+    bool textReported_ = false;
     bool processing_ = false;
     bool releasing_ = false;
     // What the application got right before the word, see
@@ -1325,6 +1332,14 @@ BambooEngine::BambooEngine(Instance *instance)
                 ->surroundingTextUpdated();
         }));
     eventWatchers_.emplace_back(instance_->watchEvent(
+        EventType::InputContextFocusIn, EventWatcherPhase::PreInputMethod,
+        [this](Event &event) {
+            static_cast<InputContextEvent &>(event)
+                .inputContext()
+                ->propertyFor(&factory_)
+                ->focusIn();
+        }));
+    eventWatchers_.emplace_back(instance_->watchEvent(
         EventType::InputContextCapabilityChanged,
         EventWatcherPhase::PostInputMethod, [this](Event &event) {
             auto &changed = static_cast<CapabilityChangedEvent &>(event);
@@ -1424,7 +1439,7 @@ static_assert(BambooKindModeI18NAnnotation::enumLength ==
                   BambooInputModeI18NAnnotation::enumLength + 1 &&
               kindModesFollowInputModes());
 
-BambooInputMode BambooEngine::inputMode(const InputContext *ic) const {
+BambooInputMode BambooEngine::inputMode(InputContext *ic) const {
     if (const auto *entry = appMode(ic->program())) {
         return *entry->mode;
     }
@@ -1444,11 +1459,20 @@ BambooInputMode BambooEngine::inputMode(const InputContext *ic) const {
                : static_cast<BambooInputMode>(static_cast<int>(kind) - 1);
 }
 
-bool BambooEngine::isQtTerminal(const InputContext *ic) const {
-    return ic->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus) &&
-           (isTerminal(ic) || !ic->capabilityFlags().testAny(CapabilityFlags{
-                                  CapabilityFlag::SurroundingText,
-                                  CapabilityFlag::PasswordOrSensitive}));
+// fcitx5-qt drops the SurroundingText flag before every key, the text
+// comes with the next report: on a change, or as a field gets focus (Qt
+// Widgets on a click or Tab, not on a window switch). Konsole reports none
+// and asks for neither capitals nor predictions, password fields too.
+bool BambooEngine::isQtTerminal(InputContext *ic) const {
+    const auto flags = ic->capabilityFlags();
+    if (!flags.test(CapabilityFlag::GetIMInfoOnFocus)) {
+        return false;
+    }
+    return isTerminal(ic) ||
+           (!ic->propertyFor(&factory_)->textReported() &&
+            flags.test(CapabilityFlag::NoAutoUpperCase) &&
+            flags.test(CapabilityFlag::NoSpellCheck) &&
+            !flags.testAny(CapabilityFlag::PasswordOrSensitive));
 }
 
 bool BambooEngine::isTerminal(const InputContext *ic) const {

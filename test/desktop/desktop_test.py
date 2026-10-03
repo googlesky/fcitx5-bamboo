@@ -472,6 +472,29 @@ def test_qtquick(session, runs):
     ], runs, attempt)
 
 
+def test_kdialog(session, runs):
+    """A Qt Widgets field in the BackSpace mode, through fcitx5-qt, which
+    drops the surrounding text capability before every key: plain preedit,
+    no DEL characters as for Konsole."""
+    session.add_app_mode("kdialog", "BackSpace")
+
+    def attempt(keys, speed, rng):
+        app = subprocess.Popen(["kdialog", "--inputbox", "test"], env=session.env,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        session.wait_focus("kdialog")
+        session.keys(key_events(keys, *speed, rng) + ["w300", f"d{RETURN}", "w30", f"u{RETURN}"])
+        try:
+            return app.communicate(timeout=5)[0].rstrip("\n")
+        except subprocess.TimeoutExpired:
+            app.kill()
+            app.wait()
+            return None
+
+    return run_cases("kdialog", [
+        ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
+    ], runs, attempt)
+
+
 def type_into_terminal(session, runs, name, program, terminal):
     """Types into an application setting Claude Code's terminal modes, in
     tmux, in a terminal started with the command line terminal: the text
@@ -525,7 +548,7 @@ def test_konsole(session, runs):
 
 TESTS = {"chrome": test_chrome, "omnibox": test_omnibox,
          "chrome-backspace": test_chrome_backspace, "gtk": test_gtk, "qtquick": test_qtquick,
-         "terminal": test_terminal, "konsole": test_konsole}
+         "kdialog": test_kdialog, "terminal": test_terminal, "konsole": test_konsole}
 
 
 def main():

@@ -71,12 +71,12 @@ public:
     const auto &config() const { return config_; }
     const auto &customKeymap() const { return customKeymap_; }
     // The mode of the program of ic, else of its kind, else the default.
-    BambooInputMode inputMode(const InputContext *ic) const;
+    BambooInputMode inputMode(InputContext *ic) const;
     // Terminals and code editors, where Escape switches to English.
     bool isTerminal(const InputContext *ic) const;
     // Qt terminals, which take DEL characters for BackSpace: Konsole
     // reports no text.
-    bool isQtTerminal(const InputContext *ic) const;
+    bool isQtTerminal(InputContext *ic) const;
     // Remembers the typing mode of the program of ic.
     void setInputMode(InputContext *ic, BambooInputMode mode);
 

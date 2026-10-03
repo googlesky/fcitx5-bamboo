@@ -1,10 +1,10 @@
 # Typing into real applications
 
 `desktop_test.py` types VNI into Chrome, Chrome's address bar, a GTK entry,
-Qt Quick fields and a terminal application in Alacritty and in Konsole,
-through a nested KWin with fcitx5 as its input method, and checks the text
-they get. Keys come fast and overlap, like a person rolling them: 40 down to
-5 ms apart.
+Qt Quick fields, a Qt Widgets field and a terminal application in Alacritty
+and in Konsole, through a nested KWin with fcitx5 as its input method, and
+checks the text they get. Keys come fast and overlap, like a person rolling
+them: 40 down to 5 ms apart.
 
 It is what found these bugs, which the unit tests model where they can:
 
@@ -18,6 +18,9 @@ It is what found these bugs, which the unit tests model where they can:
   as it was typed, and changed where it read as Vietnamese.
 - fcitx5-qt hands the keys the input method lets through to the application
   later than our commits: typed fast into Konsole, "tôi" came out "t ôi".
+- fcitx5-qt drops the surrounding text capability before every key: Qt
+  fields in the BackSpace mode were taken for terminals, DEL characters typed
+  into them.
 
 Nothing reaches the desktop: KWin renders to a virtual output and runs on a
 D-Bus of its own, fcitx5 gets a configuration of its own, Chrome a profile of
@@ -26,8 +29,8 @@ its own and no host but localhost.
 ## Running
 
 Needs `kwin_wayland`, `fcitx5`, `wayland-scanner`, a C compiler, `uv`, and the
-applications tested: `google-chrome-stable`, `zenity`, `qml6` with
-fcitx5-qt, `alacritty`, `konsole` and `tmux`.
+applications tested: `google-chrome-stable`, `zenity`, `qml6` and `kdialog`
+with fcitx5-qt, `alacritty`, `konsole` and `tmux`.
 
 ```sh
 # All tests, with the libbamboo.so of a build:
