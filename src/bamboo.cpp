@@ -279,11 +279,7 @@ public:
                                : engine_->inputMode(ic_);
     }
 
-    // How the word being typed shows. Surrounding Text mode never underlines
-    // it: the application's text is edited where it can be, else the word is
-    // plain preedit where the client draws it as told (Qt), else it shows in
-    // fcitx5's window (Chromium, Firefox and terminals underline any
-    // preedit).
+    // How the word being typed shows.
     enum class Method {
         Exclude,
         Preedit,
@@ -294,15 +290,15 @@ public:
     };
 
     Method method() const {
-        auto mode = effectiveMode();
+        const auto mode = effectiveMode();
         // An address bar shows its suggestion in its report only, and
-        // composing whole words loses Return to it: when it reports its
-        // text it gets Surrounding Text, which waits for the report.
+        // composing whole words loses Return to it: where its text is edited
+        // in place it gets Surrounding Text, which waits for the report.
         if ((mode == BambooInputMode::BackSpace ||
              mode == BambooInputMode::InputMethodWindow) &&
             ic_->capabilityFlags().test(CapabilityFlag::Url) &&
-            ic_->surroundingText().isValid()) {
-            mode = BambooInputMode::SurroundingText;
+            surroundingTextMethod() == Method::Surrounding) {
+            return Method::Surrounding;
         }
         switch (mode) {
         case BambooInputMode::Exclude:
@@ -330,6 +326,14 @@ public:
         case BambooInputMode::SurroundingText:
             break;
         }
+        return surroundingTextMethod();
+    }
+
+    // Surrounding Text mode never underlines the word: the application's
+    // text is edited where it can be, else the word is plain preedit where
+    // the client draws it as told (Qt), else it shows in fcitx5's window
+    // (Chromium, Firefox and terminals underline any preedit).
+    Method surroundingTextMethod() const {
         // fcitx5-qt reports surrounding text on some updates only, words
         // would change methods as it comes and goes.
         if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {

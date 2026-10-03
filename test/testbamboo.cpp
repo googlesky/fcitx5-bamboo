@@ -1651,6 +1651,35 @@ void testTypingModes(Instance *instance) {
         FCITX_ASSERT(engine->subMode(*entry, editor) ==
                      "Telex (BackSpace → Surrounding Text)")
             << engine->subMode(*entry, editor);
+        // Its text can't be edited in place with a selection before the
+        // cursor: the mode does its own.
+        editor.type("abc");
+        editor.selectBack(2);
+        FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex (BackSpace)")
+            << engine->subMode(*entry, editor);
+    }
+    {
+        // Input Method Window too, words going in whole lose Return to the
+        // suggestion.
+        FakeEditor editor(instance, "window", PreeditCaps | CapabilityFlag::Url,
+                          true, "wayland");
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (Input Method Window → Surrounding Text)")
+            << engine->subMode(*entry, editor);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.text() == "việt" && editor.panelPreedit().empty())
+            << editor.text() << editor.panelPreedit();
+    }
+    {
+        // A Qt URL field, whose text is never edited in place.
+        FakeEditor editor(instance, "window", qtText | CapabilityFlag::Url,
+                          true, "dbus");
+        editor.focusQt(true);
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (Input Method Window)")
+            << engine->subMode(*entry, editor);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.panelPreedit() == "việt") << editor.panelPreedit();
     }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
         // Elsewhere forwarded keys may come after our commits.
