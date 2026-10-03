@@ -63,10 +63,7 @@ BAMBOO_CONFIG = """InputMethod=VNI
 DefaultInputMode="Surrounding Text"
 WaylandBackSpace=True
 """
-APP_MODES = """[AppMode/0]
-Program=konsole
-Mode=BackSpace
-"""
+APP_MODES = {"konsole": "BackSpace"}
 
 # Logs the input of a terminal application that set the modes Claude Code
 # sets, bracketed paste among them.
@@ -143,6 +140,7 @@ class Session:
         self.addon_dir = addon_dir
         self.processes = []
         self.bus_pid = None
+        self.app_modes = dict(APP_MODES)
 
     def __enter__(self):
         os.makedirs(self.work)
@@ -152,10 +150,10 @@ class Session:
             ("profile", FCITX_PROFILE),
             ("config", FCITX_CONFIG),
             ("conf/bamboo.conf", BAMBOO_CONFIG),
-            ("conf/bamboo-app-mode.conf", APP_MODES),
         ]:
             with open(os.path.join(config, name), "w") as f:
                 f.write(text)
+        self.write_app_modes()
         self.fakekeys = self.build_fakekeys()
         self.env = dict(os.environ)
         for name in ["DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XAUTHORITY"]:
@@ -191,7 +189,8 @@ class Session:
         if kwin.poll() is not None or not os.path.exists(socket_path):
             raise RuntimeError("KWin did not start, see kwin.log")
         self.env["WAYLAND_DISPLAY"] = socket
-        time.sleep(3)
+        self.wait_fcitx()
+        time.sleep(1)
         return self
 
     def __exit__(self, *exc):
@@ -248,16 +247,46 @@ class Session:
     def keys(self, args):
         subprocess.run([self.fakekeys, *args], env=self.env, check=True)
 
+    def write_app_modes(self):
+        path = os.path.join(self.work, "config", "fcitx5", "conf", "bamboo-app-mode.conf")
+        with open(path, "w") as f:
+            for i, (program, mode) in enumerate(self.app_modes.items()):
+                f.write(f'[AppMode/{i}]\nProgram={program}\nMode="{mode}"\n\n')
+
     def add_app_mode(self, program, mode):
         """Gives program a typing mode, read again by fcitx5."""
-        path = os.path.join(self.work, "config", "fcitx5", "conf", "bamboo-app-mode.conf")
-        with open(path) as f:
-            count = f.read().count("[AppMode/")
-        with open(path, "a") as f:
-            f.write(f"\n[AppMode/{count}]\nProgram={program}\nMode={mode}\n")
+        self.app_modes[program] = mode
+        self.write_app_modes()
         subprocess.run(["dbus-send", "--session", "--print-reply", "--dest=org.fcitx.Fcitx5",
                         "/controller", "org.fcitx.Fcitx.Controller1.ReloadAddonConfig",
                         "string:bamboo"], env=self.env, check=True, capture_output=True)
+
+    def wait_fcitx(self, timeout=60):
+        """Waits until KWin's fcitx5 has its name on the bus: a call to it
+        before would have the bus start another, without the display."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            reply = subprocess.run(
+                ["dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.DBus",
+                 "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner",
+                 "string:org.fcitx.Fcitx5"], env=self.env, capture_output=True, text=True).stdout
+            if "boolean true" in reply:
+                return
+            time.sleep(0.2)
+        raise RuntimeError("fcitx5 did not start, see fcitx5.log")
+
+    def log_mark(self):
+        """Where the fcitx5 log ends now, for methods."""
+        return os.path.getsize(os.path.join(self.work, "fcitx5.log"))
+
+    def methods(self, program, since):
+        """The ways bamboo typed the keys of program since the mark, as
+        BambooState::Method numbers: whether its typing mode applied."""
+        with open(os.path.join(self.work, "fcitx5.log"), errors="replace") as f:
+            f.seek(since)
+            return set(int(m) for m in re.findall(
+                rf" program {re.escape(program)} frontend \S+ caps 0x[0-9a-f]+ method (\d)",
+                f.read()))
 
     def wait_focus(self, program, timeout=30):
         """Waits until fcitx5 has the focused input context of program: on a
@@ -334,6 +363,16 @@ def run_cases(name, cases, runs, attempt):
     return failures
 
 
+def check_methods(session, name, program, since, want):
+    """A failure unless bamboo typed the keys of program since the mark the
+    ways in want only: its typing mode applied."""
+    got = session.methods(program, since)
+    ok = bool(got) and got <= want
+    print(f"{name} methods {sorted(got)}: {'ok' if ok else f'FAIL, not {sorted(want)}'}",
+          flush=True)
+    return 0 if ok else 1
+
+
 def settled(read, still=1.0, timeout=10):
     """What read returns once it stops changing: on a loaded machine Chrome
     takes long to apply the keys."""
@@ -345,9 +384,14 @@ def settled(read, still=1.0, timeout=10):
     return value
 
 
-def type_into_textarea(session, chrome, runs, name):
+# BambooState::Method
+SURROUNDING, BACKSPACES, PLAIN_PREEDIT = 4, 5, 2
+
+
+def type_into_textarea(session, chrome, runs, name, methods):
     chrome.call("Page.navigate", url="data:text/html,<textarea id=t autofocus></textarea>")
     time.sleep(2)
+    mark = session.log_mark()
 
     def attempt(keys, speed, rng):
         chrome.js("t.value = ''; t.focus(); 1")
@@ -359,10 +403,10 @@ def type_into_textarea(session, chrome, runs, name):
         ("toi6 d9ang hoc5 bai2 hat1 nguoi72 viet65 nam truong72 d9uoc75",
          "tôi đang học bài hát người việt nam trường được"),
         ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
-    ], runs, attempt)
+    ], runs, attempt) + check_methods(session, name, "google-chrome", mark, methods)
 
 
-def type_into_address_bar(session, chrome, runs, name):
+def type_into_address_bar(session, chrome, runs, name, methods):
     # Hosts visited, typed: their names complete inline as their start is
     # typed, a suggestion selected after the cursor.
     server = http.server.ThreadingHTTPServer(
@@ -374,19 +418,22 @@ def type_into_address_bar(session, chrome, runs, name):
         for _ in range(3):
             chrome.call("Page.navigate", url=f"http://{host}:{port}/", transitionType="typed")
             time.sleep(1)
+    mark = session.log_mark()
 
     def attempt(keys, speed, rng):
         # On a loaded machine the page loading can take the focus back from
         # the address bar: nothing gets the keys, which tells nothing.
-        for _ in range(3):
+        for attempt in range(3):
+            if attempt:
+                print(f"{name} {keys!r}: no navigation, again", flush=True)
             chrome.call("Page.navigate", url="about:blank")
             time.sleep(0.8)
             focus = [f"d{CTRL}", "w20", f"d{L}", "w20", f"u{L}", "w10", f"u{CTRL}", "w300"]
             session.keys(focus + key_events(keys, *speed, rng)[4:]
                          + ["w300", f"d{RETURN}", "w30", f"u{RETURN}", "w100"])
             for _ in range(100):
-                if chrome.page()["url"] != "about:blank":
-                    url = urllib.parse.urlparse(chrome.page()["url"])
+                if (url := chrome.page()["url"]) != "about:blank":
+                    url = urllib.parse.urlparse(url)
                     return urllib.parse.parse_qs(url.query).get("q", [url.hostname])[0]
                 time.sleep(0.1)
         return None
@@ -397,15 +444,18 @@ def type_into_address_bar(session, chrome, runs, name):
         ("face", "facebook.localhost"),
     ], runs, attempt)
     server.shutdown()
-    return failures
+    return failures + check_methods(session, name, "google-chrome", mark, methods)
 
 
+# After Control+L the address is selected before the cursor: the first key
+# is fixed with BackSpace keys.
 def test_chrome(session, runs):
-    return type_into_textarea(session, Chrome(session), runs, "chrome")
+    return type_into_textarea(session, Chrome(session), runs, "chrome", {SURROUNDING})
 
 
 def test_omnibox(session, runs):
-    return type_into_address_bar(session, Chrome(session), runs, "omnibox")
+    return type_into_address_bar(session, Chrome(session), runs, "omnibox",
+                                 {SURROUNDING, BACKSPACES})
 
 
 def test_chrome_backspace(session, runs):
@@ -413,8 +463,9 @@ def test_chrome_backspace(session, runs):
     address bar gets Surrounding Text for the suggestion."""
     session.add_app_mode("google-chrome", "BackSpace")
     chrome = Chrome(session)
-    return (type_into_textarea(session, chrome, runs, "chrome backspace")
-            + type_into_address_bar(session, chrome, runs, "omnibox backspace"))
+    return (type_into_textarea(session, chrome, runs, "chrome backspace", {BACKSPACES})
+            + type_into_address_bar(session, chrome, runs, "omnibox backspace",
+                                    {SURROUNDING, BACKSPACES}))
 
 
 def test_gtk(session, runs):
@@ -477,6 +528,7 @@ def test_kdialog(session, runs):
     drops the surrounding text capability before every key: plain preedit,
     no DEL characters as for Konsole."""
     session.add_app_mode("kdialog", "BackSpace")
+    mark = session.log_mark()
 
     def attempt(keys, speed, rng):
         app = subprocess.Popen(["kdialog", "--inputbox", "test"], env=session.env,
@@ -492,13 +544,14 @@ def test_kdialog(session, runs):
 
     return run_cases("kdialog", [
         ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
-    ], runs, attempt)
+    ], runs, attempt) + check_methods(session, "kdialog", "kdialog", mark, {PLAIN_PREEDIT})
 
 
 def type_into_terminal(session, runs, name, program, terminal):
     """Types into an application setting Claude Code's terminal modes, in
     tmux, in a terminal started with the command line terminal: the text
     arrives as typed, fixed as typed, never as a bracketed paste."""
+    mark = session.log_mark()
     rawlog = os.path.join(session.work, "rawlog.py")
     with open(rawlog, "w") as f:
         f.write(RAWLOG)
@@ -531,7 +584,7 @@ def type_into_terminal(session, runs, name, program, terminal):
         ("toi6 biet61 ro4 nguoi72 viet65 nam", "tôi biết rõ người việt nam"),
     ], runs, attempt)
     subprocess.run([*tmux, "kill-server"], stderr=subprocess.DEVNULL)
-    return failures
+    return failures + check_methods(session, name, program, mark, {BACKSPACES})
 
 
 def test_terminal(session, runs):
