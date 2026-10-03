@@ -5,9 +5,12 @@
  *
  */
 #include <cstdint>
+#include <ctime>
 #include <fcitx-config/rawconfig.h>
 #include <fcitx-utils/capabilityflags.h>
+#include <fcitx-utils/event.h>
 #include <fcitx-utils/eventdispatcher.h>
+#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/log.h>
@@ -28,10 +31,13 @@
 #include <fcitx/instance.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterfacemanager.h>
+#include <functional>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace fcitx;
@@ -227,6 +233,33 @@ private:
 const CapabilityFlags PreeditCaps{CapabilityFlag::Preedit,
                                   CapabilityFlag::SurroundingText};
 
+// Runs steps one after another, each the given milliseconds after the one
+// before: the input method's timers fire in between.
+class TimedSteps {
+public:
+    void add(uint64_t milliseconds, std::function<void()> step) {
+        steps_.emplace_back(milliseconds * 1000, std::move(step));
+    }
+    void run(Instance *instance) {
+        timer_ = instance->eventLoop().addTimeEvent(
+            CLOCK_MONOTONIC, now(CLOCK_MONOTONIC) + steps_[0].first, 1,
+            [this](EventSourceTime *timer, uint64_t) {
+                steps_[next_++].second();
+                if (next_ < steps_.size()) {
+                    timer->setTime(now(CLOCK_MONOTONIC) + steps_[next_].first);
+                    timer->setOneShot();
+                }
+                return true;
+            });
+        timer_->setOneShot();
+    }
+
+private:
+    std::vector<std::pair<uint64_t, std::function<void()>>> steps_;
+    size_t next_ = 0;
+    std::unique_ptr<EventSourceTime> timer_;
+};
+
 // Sub configs load partially: a missing list node keeps the old list.
 void clearList(AddonInstance *bamboo, const std::string &path,
                const std::string &list) {
@@ -373,6 +406,14 @@ void testInputModes(Instance *instance) {
         editor.replaceText("tx");
         editor.type("o");
         FCITX_ASSERT(editor.text() == "txo") << editor.text();
+    }
+    {
+        // The word after it starts right there, whatever came before.
+        FakeEditor editor(instance, "surrounding", PreeditCaps);
+        editor.type("abc to");
+        editor.replaceText("abc tx");
+        editor.type("oo");
+        FCITX_ASSERT(editor.text() == "abc txô") << editor.text();
     }
     for (const char *late : {"nguoi", "ngu"}) {
         // Typing fast, Chrome reports our last edits late, as the word was
@@ -1137,6 +1178,104 @@ void testPasswordFields(Instance *instance) {
     instance->globalConfig().load(global, true);
 }
 
+// On a loaded machine Chrome reports our edits later than a key waits, yet
+// one by one as they land: keys wait on while it reports the text as one of
+// our last edits left it, a second at most.
+void testSlowReports(Instance *instance, TimedSteps &steps) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "surrounding");
+    appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    bamboo->setSubConfig("app_modes", appModes);
+    auto editor = std::make_shared<std::unique_ptr<FakeEditor>>();
+    // The tone comes before Chrome reported "ngươi".
+    const auto start = [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        auto &e = **editor;
+        e.type("nguoi");
+        e.setReportSurrounding(false);
+        e.type("wf");
+        FCITX_ASSERT(e.text() == "ngươi") << e.text();
+    };
+    steps.add(0, start);
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        FCITX_ASSERT(e.text() == "ngươi") << e.text();
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "người") << e.text();
+        editor->reset();
+    });
+    // No report at all: after a second the key starts a new word.
+    steps.add(0, start);
+    steps.add(600, [editor]() {
+        FCITX_ASSERT((*editor)->text() == "ngươi") << (*editor)->text();
+    });
+    steps.add(700, [editor]() {
+        FCITX_ASSERT((*editor)->text() == "ngươif") << (*editor)->text();
+        editor->reset();
+    });
+    // The application changed its text: no waiting on.
+    steps.add(0, [start, editor]() {
+        start();
+        (*editor)->reportText("abc");
+    });
+    steps.add(200, [editor]() {
+        FCITX_ASSERT((*editor)->text() == "ngươif") << (*editor)->text();
+        editor->reset();
+    });
+    // A click: the text before the cursor, like after an older edit of
+    // ours, is no report behind once Chrome reported the word.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        auto &e = **editor;
+        e.type("xin chao");
+        e.setReportSurrounding(false);
+        e.reportText("xin ");
+        e.type("d");
+    });
+    steps.add(200, [editor]() {
+        FCITX_ASSERT((*editor)->text() == "xin chaod") << (*editor)->text();
+        editor->reset();
+    });
+    // An empty field, the first character not reported yet.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        (*editor)->setReportSurrounding(false);
+        (*editor)->type("dd");
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        FCITX_ASSERT(e.text() == "d") << e.text();
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "đ") << e.text();
+        editor->reset();
+    });
+    // Reported with our deletion but not the commit after it.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(instance, "surrounding",
+                                               PreeditCaps, true, "wayland");
+        auto &e = **editor;
+        e.type("nuocw");
+        e.setReportSurrounding(false);
+        e.type("sj");
+        e.reportText("nư");
+    });
+    steps.add(300, [bamboo, editor]() {
+        auto &e = **editor;
+        FCITX_ASSERT(e.text() == "nước") << e.text();
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "nược") << e.text();
+        editor->reset();
+        clearList(bamboo, "app_modes", "AppMode");
+    });
+}
+
 // ibus-bamboo's Shift+~ table choosing the typing mode of the application.
 void testInputModePicker(Instance *instance) {
     const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
@@ -1242,7 +1381,8 @@ int main() {
     Log::setLogRule("default=5,bamboo=5");
     Instance instance(FCITX_ARRAY_SIZE(argv), argv);
     instance.addonManager().registerDefaultLoader(nullptr);
-    instance.eventDispatcher().schedule([&instance]() {
+    TimedSteps steps;
+    instance.eventDispatcher().schedule([&instance, &steps]() {
         setup(&instance);
         testPreedit(&instance);
         testRestoreKeyStroke(&instance);
@@ -1262,8 +1402,12 @@ int main() {
         testCapitalizeSentences(&instance);
         testConvert(&instance);
         testNoUnderline(&instance);
-        instance.eventDispatcher().detach();
-        instance.exit();
+        testSlowReports(&instance, steps);
+        steps.add(0, [&instance]() {
+            instance.eventDispatcher().detach();
+            instance.exit();
+        });
+        steps.run(&instance);
     });
     instance.exec();
     return 0;

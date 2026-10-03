@@ -42,6 +42,7 @@
 #include <fcitx/userinterfacemanager.h>
 #include <fcntl.h>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -57,8 +58,10 @@ constexpr std::string_view MacroPrefix = "macro/";
 constexpr std::string_view InputMethodActionPrefix = "bamboo-input-method-";
 constexpr std::string_view CharsetActionPrefix = "bamboo-charset-";
 // How long a key waits for the application to report our last edit, in
-// microseconds. Chrome reports within a few milliseconds.
+// microseconds. Chrome reports within a few milliseconds, on a loaded
+// machine within hundreds.
 constexpr uint64_t HeldKeyTimeout = 150000;
+constexpr uint64_t HeldKeyMaxWait = 1000000;
 const std::string CustomKeymapFile = "conf/bamboo-custom-keymap.conf";
 const std::string AppModeFile = "conf/bamboo-app-mode.conf";
 
@@ -381,10 +384,66 @@ public:
                                  : "";
             }
         }
+        if (lastMethod_ == Method::Surrounding) {
+            noteEdit();
+        }
         lastKeyToApp_ = !keyEvent.filtered();
         sentenceKeys_ =
             typingKey ? SentenceKeys::Other : nextSentenceKeys(keyEvent.key());
         return true;
+    }
+
+    // Remembers how the text before the cursor ends once the application has
+    // our last edits, see waitForReport.
+    void noteEdit() {
+        noteTail(stringutils::concat(separator_, surroundingWord()));
+    }
+
+    void noteTail(std::string tail) {
+        if (tail.empty() ||
+            (!editTails_.empty() && editTails_.back() == tail)) {
+            return;
+        }
+        editTails_.push_back(std::move(tail));
+        if (editTails_.size() > 16) {
+            editTails_.pop_front();
+        }
+    }
+
+    // KWin sends a deletion and the commit after it in turn: the
+    // application may report the text in between.
+    void noteDeletion(int count) {
+        if (editTails_.empty()) {
+            return;
+        }
+        auto tail = editTails_.back();
+        for (; count > 0 && !tail.empty(); count--) {
+            auto last = tail.size();
+            while (last > 0 && (tail[--last] & 0xc0) == 0x80) {
+            }
+            tail.resize(last);
+            noteTail(tail);
+        }
+    }
+
+    // Chrome reports in order: once it reports the word, a text as one of
+    // our older edits left it is a click or the application's change.
+    void pruneTails() {
+        wordStart_.reset();
+        editTails_.clear();
+        noteEdit();
+    }
+
+    // Whether the application reports its text as one of our last edits left
+    // it, or as it was before the word: it is behind, its text not changed.
+    bool reportBehind() const {
+        const auto before = textBeforeCursor();
+        if (wordStart_ && before == *wordStart_) {
+            return true;
+        }
+        return std::ranges::any_of(editTails_, [before](const auto &tail) {
+            return before.ends_with(tail);
+        });
     }
 
     // A Qt Quick field turning into a password field or back mid-word: the
@@ -419,6 +478,7 @@ public:
         if (inSync && !word.empty()) {
             trustReports_ = true;
             timeouts_ = 0;
+            pruneTails();
         }
         if (!heldKeys_.empty()) {
             if (inSync) {
@@ -529,6 +589,15 @@ public:
             // start a new word rather than delete what is not ours.
             FCITX_BAMBOO_DEBUG() << "surrounding text changed, new word";
             ResetEngine(bambooEngine_.handle());
+            separator_.clear();
+        }
+        if (method == Method::Surrounding) {
+            if (surroundingWord().empty()) {
+                // What the word comes after, see reportBehind.
+                wordStart_ = std::string(textBeforeCursor());
+            } else {
+                pruneTails();
+            }
         }
 
         if (restoreKey) {
@@ -567,6 +636,9 @@ public:
     void flush() {
         const int count = EnginePullDeleteCount(bambooEngine_.handle());
         UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
+        if (lastMethod_ == Method::Surrounding) {
+            noteDeletion(count);
+        }
         changeApplicationText(count, commit ? commit.get() : "",
                               lastMethod_ == Method::BackSpaces);
         // The word ended: the next one comes after what we committed last.
@@ -628,6 +700,8 @@ public:
         // Typed where the cursor was, focus or cursor gone elsewhere.
         heldKeys_.clear();
         separator_.clear();
+        editTails_.clear();
+        wordStart_.reset();
         if (heldTimeout_) {
             heldTimeout_->setEnabled(false);
         }
@@ -892,31 +966,55 @@ private:
     // ZwpTextInputV3Impl::OnDone: deleting before it reports our last edit
     // loses the deletion ("bài" gave "baiài"), and starting a new word types
     // a tone key as a digit ("nguòi7" for "người"). Keys wait for its report
-    // a short while at most, then the application is taken to have changed
-    // its text (a click): a new word starts. Twice in a row, the application
-    // does not report its text right and is not waited for until it does.
+    // a short while, on while it reports the text as one of our last edits
+    // left it (a loaded machine, "kiêm3" for "kiểm") but a second at most:
+    // then the application is taken to have changed its text (a click), a
+    // new word starts. Twice in a row, the application does not report its
+    // text right and is not waited for until it does.
     void waitForReport() {
+        waitingSince_ = now(CLOCK_MONOTONIC);
         if (!heldTimeout_) {
             heldTimeout_ = engine_->instance()->eventLoop().addTimeEvent(
-                CLOCK_MONOTONIC, now(CLOCK_MONOTONIC) + HeldKeyTimeout, 1000,
+                CLOCK_MONOTONIC, waitingSince_ + HeldKeyTimeout, 1000,
                 [this](EventSourceTime *, uint64_t) {
-                    FCITX_BAMBOO_DEBUG() << "no report of the word in time";
-                    if (++timeouts_ > 1) {
-                        trustReports_ = false;
-                    }
-                    if (bambooEngine_) {
-                        ResetEngine(bambooEngine_.handle());
-                    }
-                    separator_.clear();
-                    releaseHeldKeys(0);
+                    reportOverdue();
                     return true;
                 });
         } else {
-            heldTimeout_->setTime(now(CLOCK_MONOTONIC) + HeldKeyTimeout);
+            heldTimeout_->setTime(waitingSince_ + HeldKeyTimeout);
         }
         heldTimeout_->setOneShot();
         doneRequests_ = 0;
         requestDone();
+    }
+
+    void reportOverdue() {
+        // A report that came while keys were typed.
+        if (surroundingInSync(surroundingWord())) {
+            releaseHeldKeys(0);
+            return;
+        }
+        const auto time = now(CLOCK_MONOTONIC);
+        if (time < waitingSince_ + HeldKeyMaxWait && reportBehind()) {
+            FCITX_BAMBOO_DEBUG() << "report of the word behind, waiting on";
+            heldTimeout_->setTime(std::min(time + HeldKeyTimeout,
+                                           waitingSince_ + HeldKeyMaxWait));
+            heldTimeout_->setOneShot();
+            doneRequests_ = 0;
+            requestDone();
+            return;
+        }
+        FCITX_BAMBOO_DEBUG() << "no report of the word in time";
+        if (++timeouts_ > 1) {
+            trustReports_ = false;
+        }
+        if (bambooEngine_) {
+            ResetEngine(bambooEngine_.handle());
+        }
+        separator_.clear();
+        editTails_.clear();
+        wordStart_.reset();
+        releaseHeldKeys(0);
     }
 
     // Chrome reports the text it holds back only after done, which KWin
@@ -1012,6 +1110,11 @@ private:
     // first, see waitForReport.
     std::deque<Key> heldKeys_;
     std::unique_ptr<EventSourceTime> heldTimeout_;
+    uint64_t waitingSince_ = 0;
+    // How the text before the cursor ends after each of our last edits,
+    // oldest first, and what it was before the word, see reportBehind.
+    std::deque<std::string> editTails_;
+    std::optional<std::string> wordStart_;
     SentenceKeys sentenceKeys_ = SentenceKeys::Other;
     // Characters before the cursor a conversion replaces.
     int convertDelete_ = 0;
