@@ -1072,16 +1072,7 @@ private:
         const auto time = now(CLOCK_MONOTONIC);
         if (time < waitingSince_ + HeldKeyMaxWait && reportBehind()) {
             FCITX_BAMBOO_DEBUG() << "report of the word behind, waiting on";
-            // Behind a few times a minute, typing waits often.
-            std::erase_if(behindWaits_, [time](uint64_t when) {
-                return when + 60000000 < time;
-            });
-            behindWaits_.push_back(time);
-            if (behindWaits_.size() >= 5 && !suggested_ &&
-                effectiveMode() == BambooInputMode::SurroundingText) {
-                suggested_ = true;
-                engine_->suggestBackSpaceMode(ic_);
-            }
+            noteBehindWait();
             heldTimeout_->setTime(std::min(time + HeldKeyTimeout,
                                            waitingSince_ + HeldKeyMaxWait));
             heldTimeout_->setOneShot();
@@ -1100,6 +1091,25 @@ private:
         editTails_.clear();
         wordStart_.reset();
         releaseHeldKeys(0);
+    }
+
+    // Five keys in a minute waiting for reports behind: typing waits often,
+    // the modes that do not wait are suggested. Address bars wait in them
+    // too, and the table of modes needs a program name.
+    void noteBehindWait() {
+        if (ic_->capabilityFlags().test(CapabilityFlag::Url) ||
+            ic_->program().empty() ||
+            (!behindWaits_.empty() && behindWaits_.back() == waitingSince_)) {
+            return;
+        }
+        std::erase_if(behindWaits_, [this](uint64_t when) {
+            return when + 60000000 < waitingSince_;
+        });
+        behindWaits_.push_back(waitingSince_);
+        if (behindWaits_.size() >= 5) {
+            behindWaits_.clear();
+            engine_->suggestModesNotWaiting(ic_);
+        }
     }
 
     // Chrome reports the text it holds back only after done, which KWin
@@ -1197,9 +1207,9 @@ private:
     std::deque<Key> heldKeys_;
     std::unique_ptr<EventSourceTime> heldTimeout_;
     uint64_t waitingSince_ = 0;
-    // When reports were behind lately, see reportOverdue.
+    // When keys waiting for reports behind lately started to, see
+    // noteBehindWait.
     std::vector<uint64_t> behindWaits_;
-    bool suggested_ = false;
     // How the text before the cursor ends after each of our last edits,
     // oldest first, and what it was before the word, see reportBehind.
     std::deque<std::string> editTails_;
@@ -1514,19 +1524,37 @@ std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
     return stringutils::concat(*config_.inputMethod, " (", label, ")");
 }
 
-void BambooEngine::suggestBackSpaceMode(InputContext *ic) {
-    FCITX_BAMBOO_DEBUG() << "suggesting the BackSpace mode for "
-                         << ic->program();
+void BambooEngine::suggestModesNotWaiting(InputContext *ic) {
+    if (!suggestedPrograms_.insert(ic->program()).second) {
+        return;
+    }
+    std::string key;
+    for (const auto &switchKey : *config_.inputModeSwitchKey) {
+        if (key = switchKey.toString(KeyStringFormat::Localized);
+            !key.empty()) {
+            break;
+        }
+    }
+    // BackSpace keeps the order of keys and text where KWin hands them to
+    // Chromium, not to Qt and GTK applications.
+    auto text =
+        key.empty()
+            ? _("%1 reports its text late, typing waits for it. Typing modes "
+                "that do not wait, in Typing Mode per Application in the "
+                "configuration: BackSpace for Chromium-based applications, "
+                "Input Method Window for any.")
+            : stringutils::replaceAll(
+                  _("%1 reports its text late, typing waits for it. Typing "
+                    "modes that do not wait, in the table of typing modes "
+                    "(%2): BackSpace for Chromium-based applications, Input "
+                    "Method Window for any."),
+                  "%2", key);
+    text = stringutils::replaceAll(text, "%1", ic->program());
+    FCITX_BAMBOO_DEBUG() << "suggesting modes that do not wait: " << text;
     if (auto *notifications = this->notifications()) {
         notifications->call<INotifications::showTip>(
             "bamboo-backspace-mode", _("Bamboo"), "fcitx_bamboo",
-            _("Typing waits for the application"),
-            stringutils::replaceAll(
-                _("%1 reports its text late, typing waits for it. The "
-                  "BackSpace typing mode, in the table of typing modes (~), "
-                  "does not wait."),
-                "%1", ic->program()),
-            -1);
+            _("Typing waits for the application"), text, -1);
     }
 }
 

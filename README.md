@@ -64,9 +64,10 @@ own: Qt applications, Qt terminals reporting no text (Konsole), GTK
 applications, Wayland applications through KWin (Chrome, Electron,
 Alacritty) and X11 applications through XIM. The label of the input method
 tells what the mode does where it does something else, as "VNI (Surrounding
-Text → BackSpace)" in Alacritty. An application in Surrounding Text whose
-late reports keep typing waiting gets a notification, once, suggesting the
-BackSpace mode.
+Text → BackSpace)" in Alacritty. An application whose late reports keep
+typing waiting, five keys in a minute, gets a notification, once, suggesting
+the modes that do not wait: BackSpace for Chromium-based applications, Input
+Method Window for any.
 
 ### More, from UniKey, OpenKey and others
 

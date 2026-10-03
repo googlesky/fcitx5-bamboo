@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: fcitx5-bamboo\n"
 "Report-Msgid-Bugs-To: https://github.com/googlesky/fcitx5-bamboo-plus/"
 "issues\n"
-"POT-Creation-Date: 2026-10-03 14:29+0700\n"
+"POT-Creation-Date: 2026-10-03 15:41+0700\n"
 "PO-Revision-Date: 2022-06-04 06:04+0000\n"
 "Last-Translator: Zen Fas, 2022\n"
 "Language-Team: Vietnamese (https://www.transifex.com/fcitx/teams/12005/vi/)\n"
@@ -20,13 +20,25 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/bamboo.cpp:1500
+#: src/bamboo.cpp:1542
 msgid ""
-"%1 reports its text late, typing waits for it. The BackSpace typing mode, in "
-"the table of typing modes (~), does not wait."
+"%1 reports its text late, typing waits for it. Typing modes that do not "
+"wait, in Typing Mode per Application in the configuration: BackSpace for "
+"Chromium-based applications, Input Method Window for any."
 msgstr ""
-"%1 báo chữ chậm, gõ phải chờ nó. Chế độ gõ BackSpace, trong bảng chế độ gõ "
-"(~), không phải chờ."
+"%1 báo chữ chậm, gõ phải chờ nó. Chế độ gõ không phải chờ, trong Chế độ gõ "
+"theo ứng dụng ở phần cấu hình: Gõ thẳng, sửa bằng BackSpace cho ứng dụng nền "
+"Chromium, Hiện trong cửa sổ bộ gõ cho mọi ứng dụng."
+
+#: src/bamboo.cpp:1547
+msgid ""
+"%1 reports its text late, typing waits for it. Typing modes that do not "
+"wait, in the table of typing modes (%2): BackSpace for Chromium-based "
+"applications, Input Method Window for any."
+msgstr ""
+"%1 báo chữ chậm, gõ phải chờ nó. Chế độ gõ không phải chờ, trong bảng chế độ "
+"gõ (%2): BackSpace cho ứng dụng nền Chromium, Input Method Window cho mọi "
+"ứng dụng."
 
 #: src/bambooconfig.h:258
 msgid ""
@@ -48,7 +60,7 @@ msgstr "Theo kiểu gõ"
 msgid "BackSpace"
 msgstr "Gõ thẳng, sửa bằng BackSpace"
 
-#: src/bamboo.cpp:1497
+#: src/bamboo.cpp:1556
 msgid "Bamboo"
 msgstr "Bamboo"
 
@@ -72,7 +84,7 @@ msgstr "Viết Hoa Đầu Từ"
 msgid "Choose Typing Mode for Application"
 msgstr "Phím chọn chế độ gõ cho ứng dụng"
 
-#: src/bamboo.cpp:859
+#: src/bamboo.cpp:865
 msgid "Convert"
 msgstr "Chuyển đổi"
 
@@ -129,7 +141,7 @@ msgstr "Từ bảng mã"
 msgid "GTK applications"
 msgstr "Ứng dụng GTK"
 
-#: src/bamboo.cpp:1238 src/bambooconfig.h:222
+#: src/bamboo.cpp:1255 src/bambooconfig.h:222
 msgid "Input Method"
 msgstr "Kiểu gõ"
 
@@ -145,19 +157,19 @@ msgstr "Phím"
 msgid "Lower case"
 msgstr "chữ thường"
 
-#: src/bamboo.cpp:1306 src/bambooconfig.h:87
+#: src/bamboo.cpp:1323 src/bambooconfig.h:87
 msgid "Macro"
 msgstr "Gõ tắt"
 
-#: src/bamboo.cpp:1601
+#: src/bamboo.cpp:1654
 msgid "Macro Disabled"
 msgstr "Gõ tắt bị tắt"
 
-#: src/bamboo.cpp:1600
+#: src/bamboo.cpp:1653
 msgid "Macro Enabled"
 msgstr "Gõ tắt đang mở"
 
-#: src/bamboo.cpp:843
+#: src/bamboo.cpp:849
 msgid "Nothing to convert"
 msgstr "Không có gì để chuyển đổi"
 
@@ -165,7 +177,7 @@ msgstr "Không có gì để chuyển đổi"
 msgid "Output Charset"
 msgstr "Bảng Mã"
 
-#: src/bamboo.cpp:1265
+#: src/bamboo.cpp:1282
 msgid "Output charset"
 msgstr "Bảng mã"
 
@@ -197,15 +209,15 @@ msgstr "Gõ nhanh"
 msgid "Restore Key Stroke"
 msgstr "Khôi phục phím bấm"
 
-#: src/bamboo.cpp:1592
+#: src/bamboo.cpp:1645
 msgid "Spell Check Disabled"
 msgstr "Kiểm tra chính tả bị tắt"
 
-#: src/bamboo.cpp:1591
+#: src/bamboo.cpp:1644
 msgid "Spell Check Enabled"
 msgstr "Kiểm tra chính tả đang mở"
 
-#: src/bamboo.cpp:1294
+#: src/bamboo.cpp:1311
 msgid "Spell check"
 msgstr "Kiểm tra chính tả"
 
@@ -228,7 +240,7 @@ msgid ""
 msgstr ""
 "Terminal gõ qua KWin nhận chữ trực tiếp thay vì hiện trong cửa sổ bộ gõ"
 
-#: src/bamboo.cpp:833
+#: src/bamboo.cpp:839
 msgid "Too long to convert"
 msgstr "Văn bản quá dài để chuyển đổi"
 
@@ -248,11 +260,11 @@ msgstr "Chế độ gõ theo ứng dụng"
 msgid "Typing Mode per Kind of Application"
 msgstr "Chế độ gõ theo loại ứng dụng"
 
-#: src/bamboo.cpp:893
+#: src/bamboo.cpp:899
 msgid "Typing mode for"
 msgstr "Chế độ gõ cho"
 
-#: src/bamboo.cpp:1498
+#: src/bamboo.cpp:1557
 msgid "Typing waits for the application"
 msgstr "Gõ phải chờ ứng dụng"
 

@@ -1279,8 +1279,6 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
     RawConfig appModes;
     appModes.setValueByPath("AppMode/0/Program", "surrounding");
     appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
-    appModes.setValueByPath("AppMode/1/Program", "backspace");
-    appModes.setValueByPath("AppMode/1/Mode", "BackSpace");
     bamboo->setSubConfig("app_modes", appModes);
     auto editor = std::make_shared<std::unique_ptr<FakeEditor>>();
     // The tone comes before Chrome reported "ngươi".
@@ -1302,41 +1300,24 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
         FCITX_ASSERT(e.text() == "người") << e.text();
         editor->reset();
     });
-    // No report at all: after a second the key starts a new word, and the
-    // BackSpace mode, which waits for nothing, is suggested.
+    // No report at all: after a second the key starts a new word. One key
+    // waiting suggests nothing. Logs go to the stream between steps only,
+    // failures need theirs.
     auto log = std::make_shared<std::ostringstream>();
     steps.add(0, [start, log]() {
-        Log::setLogStream(*log);
         start();
+        Log::setLogStream(*log);
     });
-    steps.add(600, [editor]() {
+    steps.add(600, [editor, log]() {
+        Log::setLogStream(std::cerr);
         FCITX_ASSERT((*editor)->text() == "ngươi") << (*editor)->text();
+        Log::setLogStream(*log);
     });
     steps.add(700, [editor, log]() {
         Log::setLogStream(std::cerr);
         FCITX_ASSERT((*editor)->text() == "ngươif") << (*editor)->text();
-        FCITX_ASSERT(
-            log->str().find("suggesting the BackSpace mode for surrounding") !=
-            std::string::npos)
-            << log->str();
-        editor->reset();
-    });
-    // In the BackSpace mode only address bars wait: nothing to suggest.
-    steps.add(0, [instance, editor, log]() {
-        log->str("");
-        Log::setLogStream(*log);
-        *editor = std::make_unique<FakeEditor>(
-            instance, "backspace", PreeditCaps | CapabilityFlag::Url, true,
-            "wayland");
-        auto &e = **editor;
-        e.type("nguoi");
-        e.setReportSurrounding(false);
-        e.type("wf");
-    });
-    steps.add(1100, [editor, log]() {
-        Log::setLogStream(std::cerr);
-        FCITX_ASSERT(log->str().find("suggesting the BackSpace mode") ==
-                     std::string::npos)
+        FCITX_ASSERT(log->str().find("waiting on") != std::string::npos &&
+                     log->str().find("suggesting") == std::string::npos)
             << log->str();
         editor->reset();
     });
@@ -1431,13 +1412,101 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
         e.type("sj");
         e.reportText("nư");
     });
-    steps.add(300, [bamboo, editor]() {
+    steps.add(300, [editor]() {
         auto &e = **editor;
         FCITX_ASSERT(e.text() == "nước") << e.text();
         e.setReportSurrounding(true);
         e.report();
         FCITX_ASSERT(e.text() == "nược") << e.text();
         editor->reset();
+    });
+    // Five keys in a minute waiting for reports behind: the modes that do
+    // not wait are suggested, once for the program.
+    const auto open = [instance, editor, log](const char *program,
+                                              CapabilityFlags caps) {
+        return [instance, editor, log, program, caps]() {
+            *editor = std::make_unique<FakeEditor>(instance, program, caps,
+                                                   true, "wayland");
+            log->str("");
+            Log::setLogStream(*log);
+        };
+    };
+    const auto holds = [&steps, editor](int count) {
+        for (int i = 0; i < count; i++) {
+            steps.add(0, [editor]() {
+                auto &e = **editor;
+                e.type(" nguoi");
+                e.setReportSurrounding(false);
+                e.type("wf");
+            });
+            steps.add(300, [editor]() {
+                (*editor)->setReportSurrounding(true);
+                (*editor)->report();
+            });
+        }
+    };
+    // What the suggestion says, none if empty.
+    const auto check = [editor, log](std::vector<std::string> wanted) {
+        return [editor, log, wanted]() {
+            Log::setLogStream(std::cerr);
+            FCITX_ASSERT((*editor)->text().ends_with("người người"))
+                << (*editor)->text();
+            const auto found = log->str().find("suggesting");
+            FCITX_ASSERT(wanted.empty() == (found == std::string::npos))
+                << log->str();
+            for (const auto &text : wanted) {
+                FCITX_ASSERT(log->str().find(text, found) != std::string::npos)
+                    << text << log->str();
+            }
+            log->str("");
+            Log::setLogStream(*log);
+        };
+    };
+    // Address bars wait in these modes too.
+    steps.add(0, open("surrounding", PreeditCaps | CapabilityFlag::Url));
+    holds(5);
+    steps.add(0, check({}));
+    // It names the key opening the table.
+    steps.add(0, [bamboo]() {
+        RawConfig config;
+        config.setValueByPath("InputModeSwitchKey/0", "F2");
+        bamboo->setConfig(config);
+    });
+    steps.add(0, open("surrounding", PreeditCaps));
+    holds(4);
+    steps.add(0, check({}));
+    holds(1);
+    steps.add(
+        0, check({"surrounding reports its text late",
+                  stringutils::concat(
+                      "in the table of typing modes (",
+                      Key("F2").toString(KeyStringFormat::Localized), ")")}));
+    // In another window of the program.
+    steps.add(0, open("surrounding", PreeditCaps));
+    holds(5);
+    steps.add(0, check({}));
+    // Without a program name there is no table of modes, without the key
+    // the configuration has them.
+    steps.add(0, [bamboo]() {
+        RawConfig config;
+        config.setValueByPath("KindModes/WaylandApplications",
+                              "Surrounding Text");
+        config.setValueByPath("InputModeSwitchKey", "");
+        bamboo->setConfig(config);
+    });
+    steps.add(0, open("", PreeditCaps));
+    holds(5);
+    steps.add(0, check({}));
+    steps.add(0, open("nokey", PreeditCaps));
+    holds(5);
+    steps.add(0, check({"Typing Mode per Application in the configuration"}));
+    steps.add(0, [bamboo, editor]() {
+        Log::setLogStream(std::cerr);
+        editor->reset();
+        RawConfig config;
+        config.setValueByPath("KindModes/WaylandApplications", "Default");
+        config.setValueByPath("InputModeSwitchKey/0", "asciitilde");
+        bamboo->setConfig(config);
         clearList(bamboo, "app_modes", "AppMode");
     });
 }

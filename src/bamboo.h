@@ -26,6 +26,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fcitx {
@@ -83,9 +84,9 @@ public:
     Instance *instance() { return instance_; }
     FCITX_ADDON_DEPENDENCY_LOADER(clipboard, instance_->addonManager());
     FCITX_ADDON_DEPENDENCY_LOADER(notifications, instance_->addonManager());
-    // Tells, once, that the BackSpace mode does not wait for the reports
-    // the program of ic gives late.
-    void suggestBackSpaceMode(InputContext *ic);
+    // Tells, once for the program of ic, of the typing modes that do not
+    // wait for the reports it gives late.
+    void suggestModesNotWaiting(InputContext *ic);
 
     void reloadConfig() override;
     const Configuration *getConfig() const override { return &config_; }
@@ -139,6 +140,7 @@ private:
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>>
         eventWatchers_;
     CGoObject dictionary_;
+    std::unordered_set<std::string> suggestedPrograms_;
 };
 
 class BambooFactory : public AddonFactory {
