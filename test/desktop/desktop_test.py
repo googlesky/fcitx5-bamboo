@@ -248,6 +248,17 @@ class Session:
     def keys(self, args):
         subprocess.run([self.fakekeys, *args], env=self.env, check=True)
 
+    def add_app_mode(self, program, mode):
+        """Gives program a typing mode, read again by fcitx5."""
+        path = os.path.join(self.work, "config", "fcitx5", "conf", "bamboo-app-mode.conf")
+        with open(path) as f:
+            count = f.read().count("[AppMode/")
+        with open(path, "a") as f:
+            f.write(f"\n[AppMode/{count}]\nProgram={program}\nMode={mode}\n")
+        subprocess.run(["dbus-send", "--session", "--print-reply", "--dest=org.fcitx.Fcitx5",
+                        "/controller", "org.fcitx.Fcitx.Controller1.ReloadAddonConfig",
+                        "string:bamboo"], env=self.env, check=True, capture_output=True)
+
     def wait_focus(self, program, timeout=30):
         """Waits until fcitx5 has the focused input context of program: on a
         loaded machine applications take seconds to start."""
@@ -323,8 +334,18 @@ def run_cases(name, cases, runs, attempt):
     return failures
 
 
-def test_chrome(session, runs):
-    chrome = Chrome(session)
+def settled(read, still=1.0, timeout=10):
+    """What read returns once it stops changing: on a loaded machine Chrome
+    takes long to apply the keys."""
+    value, since, deadline = read(), time.monotonic(), time.monotonic() + timeout
+    while time.monotonic() < deadline and time.monotonic() - since < still:
+        time.sleep(0.2)
+        if (now := read()) != value:
+            value, since = now, time.monotonic()
+    return value
+
+
+def type_into_textarea(session, chrome, runs, name):
     chrome.call("Page.navigate", url="data:text/html,<textarea id=t autofocus></textarea>")
     time.sleep(2)
 
@@ -332,16 +353,16 @@ def test_chrome(session, runs):
         chrome.js("t.value = ''; t.focus(); 1")
         time.sleep(0.3)
         session.keys(key_events(keys + " ", *speed, rng) + ["w500"])
-        return chrome.js("t.value").strip()
+        return settled(lambda: chrome.js("t.value").strip())
 
-    return run_cases("chrome", [
+    return run_cases(name, [
         ("toi6 d9ang hoc5 bai2 hat1 nguoi72 viet65 nam truong72 d9uoc75",
          "tôi đang học bài hát người việt nam trường được"),
         ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
     ], runs, attempt)
 
 
-def test_omnibox(session, runs):
+def type_into_address_bar(session, chrome, runs, name):
     # Hosts visited, typed: their names complete inline as their start is
     # typed, a suggestion selected after the cursor.
     server = http.server.ThreadingHTTPServer(
@@ -349,32 +370,51 @@ def test_omnibox(session, runs):
                                             directory=session.work))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
-    chrome = Chrome(session)
     for host in ["baihat.localhost", "vietnamnet.localhost", "facebook.localhost"]:
         for _ in range(3):
             chrome.call("Page.navigate", url=f"http://{host}:{port}/", transitionType="typed")
             time.sleep(1)
 
     def attempt(keys, speed, rng):
-        chrome.call("Page.navigate", url="about:blank")
-        time.sleep(0.8)
-        focus = [f"d{CTRL}", "w20", f"d{L}", "w20", f"u{L}", "w10", f"u{CTRL}", "w300"]
-        session.keys(focus + key_events(keys, *speed, rng)[4:]
-                     + ["w300", f"d{RETURN}", "w30", f"u{RETURN}", "w100"])
-        for _ in range(100):
-            if chrome.page()["url"] != "about:blank":
-                break
-            time.sleep(0.1)
-        url = urllib.parse.urlparse(chrome.page()["url"])
-        return urllib.parse.parse_qs(url.query).get("q", [url.hostname])[0]
+        # On a loaded machine the page loading can take the focus back from
+        # the address bar: nothing gets the keys, which tells nothing.
+        for _ in range(3):
+            chrome.call("Page.navigate", url="about:blank")
+            time.sleep(0.8)
+            focus = [f"d{CTRL}", "w20", f"d{L}", "w20", f"u{L}", "w10", f"u{CTRL}", "w300"]
+            session.keys(focus + key_events(keys, *speed, rng)[4:]
+                         + ["w300", f"d{RETURN}", "w30", f"u{RETURN}", "w100"])
+            for _ in range(100):
+                if chrome.page()["url"] != "about:blank":
+                    url = urllib.parse.urlparse(chrome.page()["url"])
+                    return urllib.parse.parse_qs(url.query).get("q", [url.hostname])[0]
+                time.sleep(0.1)
+        return None
 
-    failures = run_cases("omnibox", [
+    failures = run_cases(name, [
         ("bai2 hat1 viet65 nam", "bài hát việt nam"),
         # Return takes the suggestion.
         ("face", "facebook.localhost"),
     ], runs, attempt)
     server.shutdown()
     return failures
+
+
+def test_chrome(session, runs):
+    return type_into_textarea(session, Chrome(session), runs, "chrome")
+
+
+def test_omnibox(session, runs):
+    return type_into_address_bar(session, Chrome(session), runs, "omnibox")
+
+
+def test_chrome_backspace(session, runs):
+    """Chrome in the BackSpace mode, which never waits for its reports: its
+    address bar gets Surrounding Text for the suggestion."""
+    session.add_app_mode("google-chrome", "BackSpace")
+    chrome = Chrome(session)
+    return (type_into_textarea(session, chrome, runs, "chrome backspace")
+            + type_into_address_bar(session, chrome, runs, "omnibox backspace"))
 
 
 def test_gtk(session, runs):
@@ -483,8 +523,9 @@ def test_konsole(session, runs):
         "env", "FCITX_QT_USE_SYNC=1", "konsole", "--separate", "-e"])
 
 
-TESTS = {"chrome": test_chrome, "omnibox": test_omnibox, "gtk": test_gtk,
-         "qtquick": test_qtquick, "terminal": test_terminal, "konsole": test_konsole}
+TESTS = {"chrome": test_chrome, "omnibox": test_omnibox,
+         "chrome-backspace": test_chrome_backspace, "gtk": test_gtk, "qtquick": test_qtquick,
+         "terminal": test_terminal, "konsole": test_konsole}
 
 
 def main():
