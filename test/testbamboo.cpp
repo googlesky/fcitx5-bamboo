@@ -1359,6 +1359,9 @@ void testTypingModes(Instance *instance) {
     appModes.setValueByPath("AppMode/1/Mode", "Input Method Window");
     appModes.setValueByPath("AppMode/2/Program", "backspace");
     appModes.setValueByPath("AppMode/2/Mode", "BackSpace");
+    appModes.setValueByPath("AppMode/3/Program", "qtterminal");
+    appModes.setValueByPath("AppMode/3/Mode", "BackSpace");
+    appModes.setValueByPath("AppMode/3/Terminal", "True");
     bamboo->setSubConfig("app_modes", appModes);
     RawConfig config;
     config.setValueByPath("DisplayUnderline", "True");
@@ -1395,20 +1398,35 @@ void testTypingModes(Instance *instance) {
         editor.type(" tieengs");
         FCITX_ASSERT(editor.text() == "việt tiếngnam") << editor.text();
     }
-    {
+    // What fcitx5-qt sends for Konsole, which reports no text, and for a
+    // text field.
+    const CapabilityFlags qtTerminal{CapabilityFlag::Preedit,
+                                     CapabilityFlag::GetIMInfoOnFocus};
+    const auto qtText = qtTerminal | CapabilityFlag::SurroundingText;
+    for (auto [program, caps] : {std::pair{"backspace", qtTerminal},
+                                 std::pair{"qtterminal", qtText}}) {
         // fcitx5-qt hands forwarded keys over after commits: in a terminal
         // DEL characters go with them.
-        FakeEditor editor(instance, "backspace",
-                          CapabilityFlags{CapabilityFlag::Preedit,
-                                          CapabilityFlag::GetIMInfoOnFocus},
-                          false, "dbus");
+        FakeEditor editor(instance, program, caps, false, "dbus");
         editor.setTerminal();
-        editor.type("vieetj tieengs");
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.text() == "việt") << program << editor.text();
+        FCITX_ASSERT(editor.preedit().empty() && editor.panelPreedit().empty())
+            << program;
+        editor.type(" tieengs");
         editor.press(Key(FcitxKey_BackSpace));
         editor.type("g ");
-        FCITX_ASSERT(editor.text() == "việt tiếng ") << editor.text();
-        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        FCITX_ASSERT(editor.text() == "việt tiếng ")
+            << program << editor.text();
         FCITX_ASSERT(editor.forwardedKeys() == 0) << editor.forwardedKeys();
+    }
+    {
+        // Other Qt applications take DEL for a character.
+        FakeEditor editor(instance, "backspace", qtText, true, "dbus");
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.preedit() == "việt") << editor.preedit();
+        editor.type(" ");
+        FCITX_ASSERT(editor.text() == "việt ") << editor.text();
     }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
         // Elsewhere forwarded keys may come after our commits.
@@ -1450,9 +1468,22 @@ void testInputModePicker(Instance *instance) {
         FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
 
         // The table opens on the current mode.
+        auto *engine = instance->inputMethodEngine("bamboo");
+        const auto *entry = instance->inputMethodManager().entry("bamboo");
         editor.press(tilde);
         editor.press(Key(FcitxKey_Down));
         FCITX_ASSERT(editor.press(Key(FcitxKey_Return)));
+        FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex (Plain Preedit)")
+            << engine->subMode(*entry, editor);
+        for (auto [key, mode] :
+             {std::pair{FcitxKey_4, "Telex (Input Method Window)"},
+              std::pair{FcitxKey_5, "Telex (BackSpace)"},
+              std::pair{FcitxKey_3, "Telex (Plain Preedit)"}}) {
+            editor.press(tilde);
+            FCITX_ASSERT(editor.press(Key(key)));
+            FCITX_ASSERT(engine->subMode(*entry, editor) == mode)
+                << engine->subMode(*entry, editor);
+        }
         editor.type(" aa");
         FCITX_ASSERT(editor.text() == "việt~ tiếng ") << editor.text();
         FCITX_ASSERT(editor.preedit() == "â") << editor.preedit();

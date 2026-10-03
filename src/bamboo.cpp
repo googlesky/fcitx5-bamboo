@@ -304,13 +304,22 @@ public:
             return Method::PanelPreedit;
         case BambooInputMode::BackSpace:
             // KWin hands keys we forward to the application in order with
-            // our commits, fcitx5-qt after them: DEL characters go with the
-            // commits there, for terminals. Elsewhere words go in whole.
-            return ic_->frontendName() == "wayland" ||
-                           ic_->capabilityFlags().test(
-                               CapabilityFlag::GetIMInfoOnFocus)
-                       ? Method::BackSpaces
-                       : Method::PanelPreedit;
+            // our commits. fcitx5-qt hands them over after commits: DEL
+            // characters go with the commits instead, which terminals take
+            // for BackSpace, Konsole reporting no text; other Qt
+            // applications get plain preedit. Elsewhere words go in whole.
+            if (ic_->frontendName() == "wayland") {
+                return Method::BackSpaces;
+            }
+            if (ic_->capabilityFlags().test(CapabilityFlag::GetIMInfoOnFocus)) {
+                return engine_->isTerminal(ic_) ||
+                               !ic_->capabilityFlags().testAny(CapabilityFlags{
+                                   CapabilityFlag::SurroundingText,
+                                   CapabilityFlag::PasswordOrSensitive})
+                           ? Method::BackSpaces
+                           : Method::PlainPreedit;
+            }
+            return Method::PanelPreedit;
         case BambooInputMode::SurroundingText:
             break;
         }
@@ -842,10 +851,8 @@ public:
         const auto current = engine_->inputMode(ic_->program());
         std::vector<std::string> labels;
         int cursor = 0;
-        for (auto mode :
-             {BambooInputMode::Preedit, BambooInputMode::SurroundingText,
-              BambooInputMode::PlainPreedit, BambooInputMode::InputMethodWindow,
-              BambooInputMode::BackSpace, BambooInputMode::Exclude}) {
+        for (size_t i = 0; i < BambooInputModeI18NAnnotation::enumLength; i++) {
+            const auto mode = static_cast<BambooInputMode>(i);
             if (mode == current) {
                 cursor = static_cast<int>(labels.size());
             }

@@ -41,13 +41,17 @@ current application (press it twice to type `~`):
    application gets whole words. It suits any application.
 5. **BackSpace**: the word is typed into the application and fixed with
    BackSpace keys, as typed by hand, never waiting for the application to
-   report its text: for Wayland applications on KWin, which hands those keys
-   over in order with the text. Through fcitx5-qt it is for terminals such
-   as Konsole, which paints a preedit as a block under its cursor: DEL
-   characters go with the text, and Konsole needs `FCITX_QT_USE_SYNC=1` in
-   its environment, or fcitx5-qt hands it other keys late, a word typed right
-   after Return possibly before it. Elsewhere the word shows in Fcitx's
-   window.
+   report its text. The keys must reach the application in order with the
+   text: on KWin, Chromium-based applications and terminals such as
+   Alacritty keep that order, Qt and GTK applications on Wayland text input
+   do not, and Chrome's address bar wants Surrounding Text for its
+   suggestion. Through fcitx5-qt it is for terminals, which report no text
+   (Konsole) or are flagged so in the modes per application: DEL characters
+   go with the text, and the terminal needs `FCITX_QT_USE_SYNC=1` in its
+   environment, as in `Exec=env FCITX_QT_USE_SYNC=1 konsole` in a copy of
+   its desktop file, or fcitx5-qt hands it other keys late, a word typed
+   right after Return possibly before it. Other Qt applications get plain
+   preedit, the rest the word in Fcitx's window.
 6. **Exclude**: no Vietnamese in this application.
 
 The default mode, the modes per application and the key are in the
