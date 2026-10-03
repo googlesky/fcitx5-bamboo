@@ -243,6 +243,21 @@ class Session:
     def keys(self, args):
         subprocess.run([self.fakekeys, *args], env=self.env, check=True)
 
+    def wait_focus(self, program, timeout=30):
+        """Waits until fcitx5 has the focused input context of program: on a
+        loaded machine applications take seconds to start."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            info = subprocess.run(
+                ["dbus-send", "--session", "--print-reply", "--dest=org.fcitx.Fcitx5",
+                 "/controller", "org.fcitx.Fcitx.Controller1.DebugInfo"],
+                env=self.env, capture_output=True, text=True).stdout
+            if any(f"program:{program} " in line and "focus:1" in line
+                   for line in info.splitlines()):
+                return
+            time.sleep(0.2)
+        raise RuntimeError(f"{program} got no focus")
+
 
 class Chrome:
     """Chrome in the session, driven through the DevTools protocol."""
@@ -341,7 +356,10 @@ def test_omnibox(session, runs):
         focus = [f"d{CTRL}", "w20", f"d{L}", "w20", f"u{L}", "w10", f"u{CTRL}", "w300"]
         session.keys(focus + key_events(keys, *speed, rng)[4:]
                      + ["w300", f"d{RETURN}", "w30", f"u{RETURN}", "w100"])
-        time.sleep(1.2)
+        for _ in range(100):
+            if chrome.page()["url"] != "about:blank":
+                break
+            time.sleep(0.1)
         url = urllib.parse.urlparse(chrome.page()["url"])
         return urllib.parse.parse_qs(url.query).get("q", [url.hostname])[0]
 
@@ -358,7 +376,7 @@ def test_gtk(session, runs):
     def attempt(keys, speed, rng):
         zenity = subprocess.Popen(["zenity", "--entry", "--text", "test"], env=session.env,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        time.sleep(1.5)
+        session.wait_focus("zenity")
         session.keys(key_events(keys, *speed, rng) + ["w300", f"d{RETURN}", "w30", f"u{RETURN}"])
         try:
             return zenity.communicate(timeout=5)[0].rstrip("\n")
@@ -385,7 +403,7 @@ def test_qtquick(session, runs):
         app = subprocess.Popen(["qml6", path], stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, text=True,
                                env=dict(session.env, QT_FORCE_STDERR_LOGGING="1"))
-        time.sleep(2)
+        session.wait_focus("qml")
         # fcitx5-qt reports the field Tab focused after keys already queued,
         # a race fcitx5 has with its own password fields: the password waits.
         session.keys(key_events(name, *speed, rng)
