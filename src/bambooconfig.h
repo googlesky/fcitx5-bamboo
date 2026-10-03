@@ -105,12 +105,24 @@ using InputMethodOption =
     Option<std::string, InputMethodConstrain, DefaultMarshaller<std::string>,
            InputMethodAnnotation>;
 
-// ibus-bamboo's typing modes ("chế độ gõ"). SurroundingText types without a
-// preedit by editing the text before the cursor, Exclude leaves the
-// application alone.
-enum class BambooInputMode { Preedit, SurroundingText, Exclude };
+// ibus-bamboo's typing modes ("chế độ gõ"). SurroundingText avoids the
+// underline as the application allows: editing the text before the cursor,
+// else plain preedit or fcitx5's window. The others are for applications it
+// does not suit: preedit without underline, the word in fcitx5's window, the
+// word typed and fixed with BackSpace. Exclude leaves the application alone.
+// Configurations keep the names, the order is the picker's.
+enum class BambooInputMode {
+    Preedit,
+    SurroundingText,
+    PlainPreedit,
+    InputMethodWindow,
+    BackSpace,
+    Exclude
+};
 FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooInputMode, N_("Preedit"),
-                                 N_("Surrounding Text"), N_("Exclude"));
+                                 N_("Surrounding Text"), N_("Plain Preedit"),
+                                 N_("Input Method Window"), N_("BackSpace"),
+                                 N_("Exclude"));
 
 FCITX_CONFIGURATION(
     BambooAppMode,

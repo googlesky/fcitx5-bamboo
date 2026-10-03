@@ -116,6 +116,9 @@ public:
         syncSurrounding();
     }
 
+    // Like a terminal: DEL deletes the character before the cursor.
+    void setTerminal() { terminal_ = true; }
+
     // Like an application reporting its text late, if at all.
     void setReportSurrounding(bool report) { reportSurrounding_ = report; }
     void report() { syncSurrounding(); }
@@ -144,6 +147,7 @@ public:
     std::string preedit() { return inputPanel().clientPreedit().toString(); }
     // The most characters committed at once.
     size_t longestCommit() const { return longestCommit_; }
+    int forwardedKeys() const { return forwardedKeys_; }
     // Preedit shown in fcitx5's window.
     std::string panelPreedit() { return inputPanel().preedit().toString(); }
 
@@ -157,7 +161,13 @@ protected:
         }
         anchor_ = NoSelection;
         for (auto c : utf8::MakeUTF8CharRange(str)) {
-            text_.push_back(c);
+            if (terminal_ && c == 0x7f) {
+                if (!text_.empty()) {
+                    text_.pop_back();
+                }
+            } else {
+                text_.push_back(c);
+            }
         }
         suggest();
         syncSurrounding();
@@ -192,6 +202,9 @@ protected:
     }
     // Like KWin handing a forwarded key to the application.
     void forwardKeyImpl(const ForwardKeyEvent &event) override {
+        if (!event.isRelease()) {
+            forwardedKeys_++;
+        }
         if (!event.isRelease() && event.rawKey().check(FcitxKey_BackSpace)) {
             // BackSpace takes the suggestion away first.
             if (!suggestion_.empty()) {
@@ -226,6 +239,8 @@ private:
     std::vector<uint32_t> completion_;
     size_t anchor_ = NoSelection;
     size_t longestCommit_ = 0;
+    int forwardedKeys_ = 0;
+    bool terminal_ = false;
     bool reportSurrounding_;
     const char *frontend_;
 };
@@ -1276,6 +1291,84 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
     });
 }
 
+// Typing modes chosen for applications that the automatic Surrounding Text
+// mode does not suit.
+void testTypingModes(Instance *instance) {
+    auto *bamboo = instance->addonManager().addon("bamboo");
+    auto *engine = instance->inputMethodEngine("bamboo");
+    const auto *entry = instance->inputMethodManager().entry("bamboo");
+    FCITX_ASSERT(engine && entry);
+    RawConfig appModes;
+    appModes.setValueByPath("AppMode/0/Program", "plain");
+    appModes.setValueByPath("AppMode/0/Mode", "Plain Preedit");
+    appModes.setValueByPath("AppMode/1/Program", "window");
+    appModes.setValueByPath("AppMode/1/Mode", "Input Method Window");
+    appModes.setValueByPath("AppMode/2/Program", "backspace");
+    appModes.setValueByPath("AppMode/2/Mode", "BackSpace");
+    bamboo->setSubConfig("app_modes", appModes);
+    RawConfig config;
+    config.setValueByPath("DisplayUnderline", "True");
+    bamboo->setConfig(config);
+    {
+        FakeEditor editor(instance, "plain", PreeditCaps);
+        FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex (Plain Preedit)")
+            << engine->subMode(*entry, editor);
+        editor.type("tieengs");
+        const auto &preedit = editor.inputPanel().clientPreedit();
+        FCITX_ASSERT(preedit.toString() == "tiếng" &&
+                     !preedit.formatAt(0).test(TextFormatFlag::Underline))
+            << preedit.toString();
+        FCITX_ASSERT(editor.text().empty()) << editor.text();
+    }
+    {
+        // Only words reach the application.
+        FakeEditor editor(instance, "window", PreeditCaps);
+        editor.type("tieengs");
+        FCITX_ASSERT(editor.panelPreedit() == "tiếng") << editor.panelPreedit();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        editor.type(" ");
+        FCITX_ASSERT(editor.text() == "tiếng ") << editor.text();
+    }
+    {
+        // KWin hands keys we forward to the application in order with our
+        // commits, Chrome's address bar takes its suggestion first.
+        FakeEditor editor(instance, "backspace", PreeditCaps, true, "wayland");
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.text() == "việt") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        FCITX_ASSERT(editor.forwardedKeys() > 0);
+        editor.setSuggestion("nam");
+        editor.type(" tieengs");
+        FCITX_ASSERT(editor.text() == "việt tiếngnam") << editor.text();
+    }
+    {
+        // fcitx5-qt hands forwarded keys over after commits: in a terminal
+        // DEL characters go with them.
+        FakeEditor editor(instance, "backspace",
+                          CapabilityFlags{CapabilityFlag::Preedit,
+                                          CapabilityFlag::GetIMInfoOnFocus},
+                          false, "dbus");
+        editor.setTerminal();
+        editor.type("vieetj tieengs");
+        editor.press(Key(FcitxKey_BackSpace));
+        editor.type("g ");
+        FCITX_ASSERT(editor.text() == "việt tiếng ") << editor.text();
+        FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
+        FCITX_ASSERT(editor.forwardedKeys() == 0) << editor.forwardedKeys();
+    }
+    for (const char *frontend : {"bambootest", "wayland_v2"}) {
+        // Elsewhere forwarded keys may come after our commits.
+        FakeEditor editor(instance, "backspace", PreeditCaps, true, frontend);
+        editor.type("vieetj");
+        FCITX_ASSERT(editor.panelPreedit() == "việt")
+            << frontend << editor.panelPreedit();
+        FCITX_ASSERT(editor.text().empty()) << frontend << editor.text();
+    }
+    config.setValueByPath("DisplayUnderline", "False");
+    bamboo->setConfig(config);
+    clearList(bamboo, "app_modes", "AppMode");
+}
+
 // ibus-bamboo's Shift+~ table choosing the typing mode of the application.
 void testInputModePicker(Instance *instance) {
     const Key tilde(FcitxKey_asciitilde, KeyState::Shift);
@@ -1287,8 +1380,9 @@ void testInputModePicker(Instance *instance) {
         FCITX_ASSERT(editor.press(tilde));
         FCITX_ASSERT(editor.text() == "việt") << editor.text();
         auto candidates = editor.inputPanel().candidateList();
-        FCITX_ASSERT(candidates && candidates->size() == 3);
-        FCITX_ASSERT(candidates->label(0).toString() == "*. ");
+        FCITX_ASSERT(candidates && candidates->size() == 6);
+        FCITX_ASSERT(candidates->label(0).toString() == "*. " &&
+                     candidates->label(5).toString() == "6. ");
         // Pressed again it closes and types '~'.
         FCITX_ASSERT(!editor.press(tilde));
         FCITX_ASSERT(!editor.inputPanel().candidateList());
@@ -1301,11 +1395,17 @@ void testInputModePicker(Instance *instance) {
         FCITX_ASSERT(editor.text() == "việt~ tiếng") << editor.text();
         FCITX_ASSERT(editor.preedit().empty()) << editor.preedit();
 
+        // The table opens on the current mode.
         editor.press(tilde);
         editor.press(Key(FcitxKey_Down));
         FCITX_ASSERT(editor.press(Key(FcitxKey_Return)));
         editor.type(" aa");
-        FCITX_ASSERT(editor.text() == "việt~ tiếng aa") << editor.text();
+        FCITX_ASSERT(editor.text() == "việt~ tiếng ") << editor.text();
+        FCITX_ASSERT(editor.preedit() == "â") << editor.preedit();
+        editor.press(tilde);
+        FCITX_ASSERT(editor.press(Key(FcitxKey_6)));
+        editor.type(" aa");
+        FCITX_ASSERT(editor.text() == "việt~ tiếng â aa") << editor.text();
 
         // An excluded application can still get Vietnamese back.
         FCITX_ASSERT(editor.press(tilde));
@@ -1390,6 +1490,7 @@ int main() {
         testBrokenCustomKeymap(&instance);
         testSpellCheckAction(&instance);
         testInputModes(&instance);
+        testTypingModes(&instance);
         testInputModePicker(&instance);
         testFieldHints(&instance);
         testPasswordFields(&instance);

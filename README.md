@@ -35,7 +35,20 @@ current application (press it twice to type `~`):
      The option "Surrounding Text in Wayland apps without text: edit with
      BackSpace", off by default, types the word into Wayland terminals on
      KWin instead, fixing it with BackSpace keys.
-3. **Exclude**: no Vietnamese in this application.
+3. **Plain Preedit**: the word as preedit without underline, for
+   applications that draw it as told (Qt and GTK applications).
+4. **Input Method Window**: the word shows in Fcitx's window, the
+   application gets whole words. It suits any application.
+5. **BackSpace**: the word is typed into the application and fixed with
+   BackSpace keys, as typed by hand, never waiting for the application to
+   report its text: for Wayland applications on KWin, which hands those keys
+   over in order with the text. Through fcitx5-qt it is for terminals such
+   as Konsole, which paints a preedit as a block under its cursor: DEL
+   characters go with the text, and Konsole needs `FCITX_QT_USE_SYNC=1` in
+   its environment, or fcitx5-qt hands it other keys late, a word typed right
+   after Return possibly before it. Elsewhere the word shows in Fcitx's
+   window.
+6. **Exclude**: no Vietnamese in this application.
 
 The default mode, the modes per application and the key are in the
 configuration.

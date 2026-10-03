@@ -298,6 +298,19 @@ public:
             return Method::Exclude;
         case BambooInputMode::Preedit:
             return Method::Preedit;
+        case BambooInputMode::PlainPreedit:
+            return Method::PlainPreedit;
+        case BambooInputMode::InputMethodWindow:
+            return Method::PanelPreedit;
+        case BambooInputMode::BackSpace:
+            // KWin hands keys we forward to the application in order with
+            // our commits, fcitx5-qt after them: DEL characters go with the
+            // commits there, for terminals. Elsewhere words go in whole.
+            return ic_->frontendName() == "wayland" ||
+                           ic_->capabilityFlags().test(
+                               CapabilityFlag::GetIMInfoOnFocus)
+                       ? Method::BackSpaces
+                       : Method::PanelPreedit;
         case BambooInputMode::SurroundingText:
             break;
         }
@@ -819,18 +832,24 @@ public:
         commitBuffer();
         auto candidates = std::make_unique<CommonCandidateList>();
         candidates->setLayoutHint(CandidateLayoutHint::Vertical);
+        candidates->setPageSize(8);
         const auto current = engine_->inputMode(ic_->program());
         std::vector<std::string> labels;
+        int cursor = 0;
         for (auto mode :
              {BambooInputMode::Preedit, BambooInputMode::SurroundingText,
-              BambooInputMode::Exclude}) {
+              BambooInputMode::PlainPreedit, BambooInputMode::InputMethodWindow,
+              BambooInputMode::BackSpace, BambooInputMode::Exclude}) {
+            if (mode == current) {
+                cursor = static_cast<int>(labels.size());
+            }
             labels.push_back(mode == current
                                  ? "*. "
                                  : std::to_string(labels.size() + 1) + ". ");
             candidates->append<InputModeCandidateWord>(engine_, mode);
         }
         candidates->setLabels(labels);
-        candidates->setCursorIndex(static_cast<int>(current));
+        candidates->setCursorIndex(cursor);
         ic_->inputPanel().setAuxUp(Text(
             stringutils::concat(_("Typing mode for"), " ", ic_->program())));
         ic_->inputPanel().setCandidateList(std::move(candidates));
@@ -848,24 +867,28 @@ private:
     // Deletes count characters before the cursor, with BackSpace keys or
     // through the surrounding text, then commits text. What the application
     // reported is stale until it reports again.
-    void changeApplicationText(int count, const std::string &text,
+    void changeApplicationText(int count, std::string text,
                                bool backSpaces = false) {
         if (count <= 0 && text.empty()) {
             return;
         }
         surroundingFresh_ = false;
-        if (backSpaces) {
-            for (int i = 0; i < count; i++) {
+        const auto &surroundingText = ic_->surroundingText();
+        // Chrome takes a deletion from the anchor of the selection, and
+        // drops it: its address bar's suggestion is selected after the
+        // cursor. BackSpace takes the suggestion, then the characters, in
+        // order with commits.
+        const bool suggestion =
+            ic_->frontendName() == "wayland" && surroundingText.isValid() &&
+            surroundingText.anchor() > surroundingText.cursor();
+        if (backSpaces && ic_->frontendName() != "wayland") {
+            text.insert(0, std::max(count, 0), '\x7f');
+        } else if (backSpaces) {
+            for (int i = 0; i < count + (count > 0 && suggestion); i++) {
                 ic_->forwardKey(Key(FcitxKey_BackSpace));
             }
         } else if (count > 0) {
-            const auto &surroundingText = ic_->surroundingText();
-            if (ic_->frontendName() == "wayland" &&
-                surroundingText.anchor() > surroundingText.cursor()) {
-                // Chrome takes a deletion from the anchor of the selection,
-                // and drops it: its address bar's suggestion is selected
-                // after the cursor. BackSpace takes the suggestion, then the
-                // characters, in order with commits.
+            if (suggestion) {
                 for (int i = 0; i <= count; i++) {
                     ic_->forwardKey(Key(FcitxKey_BackSpace));
                 }
