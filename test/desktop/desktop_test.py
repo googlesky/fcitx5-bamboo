@@ -399,11 +399,21 @@ def type_into_textarea(session, chrome, runs, name, methods):
         session.keys(key_events(keys + " ", *speed, rng) + ["w500"])
         return settled(lambda: chrome.js("t.value").strip())
 
+    def over_selection(keys, speed, rng):
+        # Chrome reports a selection before the cursor: the first key goes in
+        # with BackSpace keys, the word going on.
+        chrome.js("t.value = 'chao ban'; t.focus(); t.setSelectionRange(5, 8); 1")
+        time.sleep(0.3)
+        session.keys(key_events(keys + " ", *speed, rng) + ["w500"])
+        return settled(lambda: chrome.js("t.value").strip())
+
     return run_cases(name, [
         ("toi6 d9ang hoc5 bai2 hat1 nguoi72 viet65 nam truong72 d9uoc75",
          "tôi đang học bài hát người việt nam trường được"),
         ("nguoi27 d9i truong72 viet65 khong6", "người đi trường việt không"),
-    ], runs, attempt) + check_methods(session, name, "google-chrome", mark, methods)
+    ], runs, attempt) + run_cases(f"{name} selection", [
+        ("d9i hoc5", "chao đi học"),
+    ], runs, over_selection) + check_methods(session, name, "google-chrome", mark, methods)
 
 
 def type_into_address_bar(session, chrome, runs, name, methods):
@@ -418,6 +428,9 @@ def type_into_address_bar(session, chrome, runs, name, methods):
         for _ in range(3):
             chrome.call("Page.navigate", url=f"http://{host}:{port}/", transitionType="typed")
             time.sleep(1)
+    # A page whose address Control+L selects, the first key replacing it.
+    # Chrome reports it selected after the cursor, as its suggestion.
+    start = f"http://start.localhost:{port}/"
     mark = session.log_mark()
 
     def attempt(keys, speed, rng):
@@ -426,13 +439,13 @@ def type_into_address_bar(session, chrome, runs, name, methods):
         for attempt in range(3):
             if attempt:
                 print(f"{name} {keys!r}: no navigation, again", flush=True)
-            chrome.call("Page.navigate", url="about:blank")
+            chrome.call("Page.navigate", url=start)
             time.sleep(0.8)
             focus = [f"d{CTRL}", "w20", f"d{L}", "w20", f"u{L}", "w10", f"u{CTRL}", "w300"]
             session.keys(focus + key_events(keys, *speed, rng)[4:]
                          + ["w300", f"d{RETURN}", "w30", f"u{RETURN}", "w100"])
             for _ in range(100):
-                if (url := chrome.page()["url"]) != "about:blank":
+                if (url := chrome.page()["url"]) != start:
                     url = urllib.parse.urlparse(url)
                     return urllib.parse.parse_qs(url.query).get("q", [url.hostname])[0]
                 time.sleep(0.1)
@@ -440,6 +453,8 @@ def type_into_address_bar(session, chrome, runs, name, methods):
 
     failures = run_cases(name, [
         ("bai2 hat1 viet65 nam", "bài hát việt nam"),
+        # The first key goes on with the next ones.
+        ("d9i hoc5", "đi học"),
         # Return takes the suggestion.
         ("face", "facebook.localhost"),
     ], runs, attempt)
@@ -447,15 +462,13 @@ def type_into_address_bar(session, chrome, runs, name, methods):
     return failures + check_methods(session, name, "google-chrome", mark, methods)
 
 
-# After Control+L the address is selected before the cursor: the first key
-# is fixed with BackSpace keys.
 def test_chrome(session, runs):
-    return type_into_textarea(session, Chrome(session), runs, "chrome", {SURROUNDING})
+    return type_into_textarea(session, Chrome(session), runs, "chrome",
+                              {SURROUNDING, BACKSPACES})
 
 
 def test_omnibox(session, runs):
-    return type_into_address_bar(session, Chrome(session), runs, "omnibox",
-                                 {SURROUNDING, BACKSPACES})
+    return type_into_address_bar(session, Chrome(session), runs, "omnibox", {SURROUNDING})
 
 
 def test_chrome_backspace(session, runs):
@@ -464,8 +477,7 @@ def test_chrome_backspace(session, runs):
     session.add_app_mode("google-chrome", "BackSpace")
     chrome = Chrome(session)
     return (type_into_textarea(session, chrome, runs, "chrome backspace", {BACKSPACES})
-            + type_into_address_bar(session, chrome, runs, "omnibox backspace",
-                                    {SURROUNDING, BACKSPACES}))
+            + type_into_address_bar(session, chrome, runs, "omnibox backspace", {SURROUNDING}))
 
 
 def test_gtk(session, runs):

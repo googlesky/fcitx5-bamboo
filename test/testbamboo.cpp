@@ -934,6 +934,16 @@ void testNoUnderline(Instance *instance) {
         FCITX_ASSERT(editor.longestCommit() == 1) << editor.longestCommit();
     }
     {
+        // Typed over a selection Chrome reports before the cursor, the first
+        // key goes in with BackSpace keys, the word going on.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, true,
+                          "wayland");
+        editor.type("chao ban");
+        editor.selectBack(3);
+        editor.type("ddi ");
+        FCITX_ASSERT(editor.text() == "chao đi ") << editor.text();
+    }
+    {
         // Other Wayland frontends are not KWin's.
         FakeEditor editor(instance, "surrounding", PreeditCaps, false,
                           "wayland_v2");
@@ -1677,6 +1687,22 @@ void testTypingModes(Instance *instance) {
         editor.selectBack(2);
         FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex (BackSpace)")
             << engine->subMode(*entry, editor);
+    }
+    {
+        // Typed over the address selected before the cursor (Shift+Home),
+        // the first key goes in with BackSpace keys, the next ones through
+        // the surrounding text, the word going on.
+        FakeEditor editor(instance, "backspace",
+                          PreeditCaps | CapabilityFlag::Url, true, "wayland");
+        editor.replaceText("about:blank");
+        editor.selectBack(11);
+        editor.type("ddi");
+        FCITX_ASSERT(editor.text() == "đi") << editor.text();
+        // A selection before the cursor ends the word, typing replaces it.
+        editor.type(" vie");
+        editor.selectBack(2);
+        editor.type("e");
+        FCITX_ASSERT(editor.text() == "đi ve") << editor.text();
     }
     {
         // Input Method Window too, words going in whole lose Return to the

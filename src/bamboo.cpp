@@ -642,9 +642,15 @@ public:
             << ic_->surroundingText().isValid() << " "
             << ic_->surroundingText().cursor() << "/"
             << ic_->surroundingText().anchor() << " fresh " << fresh;
-        // A word ends the way it started.
+        // A word ends the way it started. Typed with BackSpace keys it is in
+        // the application already, and goes on through the surrounding text
+        // once that has it: after Control+L the address bar's text is
+        // selected before the cursor, then its suggestion after it.
         if (method != lastMethod_) {
-            commitBuffer();
+            if (lastMethod_ != Method::BackSpaces ||
+                method != Method::Surrounding) {
+                commitBuffer();
+            }
             lastMethod_ = method;
         }
         if (method == Method::Exclude) {

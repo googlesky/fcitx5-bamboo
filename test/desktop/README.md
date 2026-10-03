@@ -11,6 +11,8 @@ It is what found these bugs, which the unit tests model where they can:
 - Chrome reports its text late, typing fast, and deletes around the text it
   reported last: "nguòi7" for "người", "baiài" for "bài".
 - Chrome's address bar drops deletions around its inline suggestion.
+- Chrome reports a selection before the cursor: typed over, the first key
+  went in with BackSpace keys and the word ended there, "d9i" gave "d9i".
 - Alacritty sends a commit longer than a character as a bracketed paste, which
   Claude Code drops and opencode reorders when more keys follow.
 - Qt Quick reports password fields as sensitive only, so fcitx5 leaves them
