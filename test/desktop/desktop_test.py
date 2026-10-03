@@ -63,6 +63,10 @@ BAMBOO_CONFIG = """InputMethod=VNI
 DefaultInputMode="Surrounding Text"
 WaylandBackSpace=True
 """
+APP_MODES = """[AppMode/0]
+Program=konsole
+Mode=BackSpace
+"""
 
 # Logs the input of a terminal application that set the modes Claude Code
 # sets, bracketed paste among them.
@@ -148,6 +152,7 @@ class Session:
             ("profile", FCITX_PROFILE),
             ("config", FCITX_CONFIG),
             ("conf/bamboo.conf", BAMBOO_CONFIG),
+            ("conf/bamboo-app-mode.conf", APP_MODES),
         ]:
             with open(os.path.join(config, name), "w") as f:
                 f.write(text)
@@ -427,16 +432,16 @@ def test_qtquick(session, runs):
     ], runs, attempt)
 
 
-def test_terminal(session, runs):
-    """Alacritty, tmux and an application setting Claude Code's terminal
-    modes: the text arrives typed, never as a bracketed paste."""
+def type_into_terminal(session, runs, name, terminal):
+    """Types into an application setting Claude Code's terminal modes, in
+    tmux, in a terminal started with the command line terminal: the text
+    arrives as typed, fixed as typed, never as a bracketed paste."""
     rawlog = os.path.join(session.work, "rawlog.py")
     with open(rawlog, "w") as f:
         f.write(RAWLOG)
     log = os.path.join(session.work, "terminal-input.log")
-    tmux = ["tmux", "-L", "bamboo-desktop-test", "-f", "/dev/null"]
-    session.spawn(["alacritty", "-e", *tmux, "new-session",
-                   f"{sys.executable} {rawlog} {log}"], "alacritty")
+    tmux = ["tmux", "-L", f"bamboo-desktop-test-{name}", "-f", "/dev/null"]
+    session.spawn([*terminal, *tmux, "new-session", f"{sys.executable} {rawlog} {log}"], name)
     time.sleep(4)
 
     def attempt(keys, speed, rng):
@@ -445,20 +450,35 @@ def test_terminal(session, runs):
         data = b"".join(ast.literal_eval(line) for line in open(log))
         if b"\x1b[200~" in data:
             return "bracketed paste"
+        # Fixed as typed, not committed word by word.
+        if b"\x7f" not in data:
+            return "no DEL"
         text = ""
         for ch in data.decode("utf-8", "replace"):
             text = text[:-1] if ch == "\x7f" else text + ch
         return text.strip()
 
-    failures = run_cases("terminal", [
+    failures = run_cases(name, [
         ("toi6 biet61 ro4 nguoi72 viet65 nam", "tôi biết rõ người việt nam"),
     ], runs, attempt)
     subprocess.run([*tmux, "kill-server"], stderr=subprocess.DEVNULL)
     return failures
 
 
+def test_terminal(session, runs):
+    """Alacritty through KWin: words fixed with forwarded BackSpace keys."""
+    return type_into_terminal(session, runs, "terminal", ["alacritty", "-e"])
+
+
+def test_konsole(session, runs):
+    """Konsole in the BackSpace mode, through fcitx5-qt: words fixed with DEL
+    characters in the commits, keys handled in order in its sync mode."""
+    return type_into_terminal(session, runs, "konsole", [
+        "env", "FCITX_QT_USE_SYNC=1", "konsole", "--separate", "-e"])
+
+
 TESTS = {"chrome": test_chrome, "omnibox": test_omnibox, "gtk": test_gtk,
-         "qtquick": test_qtquick, "terminal": test_terminal}
+         "qtquick": test_qtquick, "terminal": test_terminal, "konsole": test_konsole}
 
 
 def main():
