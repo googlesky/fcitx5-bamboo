@@ -281,6 +281,26 @@ private:
 const CapabilityFlags PreeditCaps{CapabilityFlag::Preedit,
                                   CapabilityFlag::SurroundingText};
 
+// Counts the updates of the status area, on which panels ask for the input
+// method's label again.
+class StatusUpdates {
+public:
+    explicit StatusUpdates(Instance *instance)
+        : watcher_(instance->watchEvent(
+              EventType::InputContextUpdateUI, EventWatcherPhase::Default,
+              [this](Event &event) {
+                  if (static_cast<InputContextUpdateUIEvent &>(event)
+                          .component() == UserInterfaceComponent::StatusArea) {
+                      count++;
+                  }
+              })) {}
+
+    int count = 0;
+
+private:
+    std::unique_ptr<HandlerTableEntry<EventHandler>> watcher_;
+};
+
 // Runs steps one after another, each the given milliseconds after the one
 // before: the input method's timers fire in between.
 class TimedSteps {
@@ -1681,6 +1701,51 @@ void testTypingModes(Instance *instance) {
         editor.type("vieetj");
         FCITX_ASSERT(editor.panelPreedit() == "việt") << editor.panelPreedit();
     }
+    {
+        // The label follows the field's reports and flags. On KWin a field
+        // gets focus before its text comes, its text gone with the focus:
+        // the panel asks for the label again.
+        StatusUpdates updates(instance);
+        FakeEditor editor(instance, "backspace",
+                          PreeditCaps | CapabilityFlag::Url, true, "wayland");
+        const auto label = [engine, entry, &editor]() {
+            return engine->subMode(*entry, editor);
+        };
+        FCITX_ASSERT(label() == "Telex (BackSpace → Surrounding Text)")
+            << label();
+        editor.focusOut();
+        editor.surroundingText().invalidate();
+        editor.focusIn();
+        FCITX_ASSERT(label() == "Telex (BackSpace)") << label();
+        updates.count = 0;
+        editor.report();
+        FCITX_ASSERT(label() == "Telex (BackSpace → Surrounding Text)")
+            << label();
+        FCITX_ASSERT(updates.count == 1) << updates.count;
+        editor.report();
+        FCITX_ASSERT(updates.count == 1) << updates.count;
+        editor.setCapabilityFlags(editor.capabilityFlags() |
+                                  CapabilityFlag::Email);
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+        FCITX_ASSERT(updates.count == 2) << updates.count;
+        // Nothing to tell out of focus or with another input method, the
+        // panel asks as the field gets either.
+        editor.focusOut();
+        editor.setCapabilityFlags(
+            editor.capabilityFlags().unset(CapabilityFlag::Email));
+        editor.report();
+        FCITX_ASSERT(updates.count == 2) << updates.count;
+        editor.focusIn();
+        instance->setCurrentInputMethod(&editor, "keyboard-us", true);
+        updates.count = 0;
+        editor.surroundingText().invalidate();
+        editor.updateSurroundingText();
+        FCITX_ASSERT(updates.count == 0) << updates.count;
+        instance->setCurrentInputMethod(&editor, "bamboo", true);
+        updates.count = 0;
+        editor.report();
+        FCITX_ASSERT(updates.count == 1) << updates.count;
+    }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
         // Elsewhere forwarded keys may come after our commits.
         FakeEditor editor(instance, "backspace", PreeditCaps, true, frontend);
@@ -1745,6 +1810,32 @@ void testKindModes(Instance *instance) {
         FakeEditor editor(instance, "kindweb", PreeditCaps, true, "wayland");
         FCITX_ASSERT(mode(editor) == "Telex (Input Method Window)")
             << mode(editor);
+        // The panel asks for the label again as the configuration changes.
+        StatusUpdates updates(instance);
+        config.setValueByPath("KindModes/WaylandApplications", "Plain Preedit");
+        bamboo->setConfig(config);
+        FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
+        FCITX_ASSERT(updates.count == 1) << updates.count;
+        config.setValueByPath("KindModes/WaylandApplications",
+                              "Input Method Window");
+        bamboo->setConfig(config);
+    }
+    {
+        // As a Qt field reports its text after focus, the kind it is taken
+        // for and the label change.
+        StatusUpdates updates(instance);
+        FakeEditor editor(instance, "kindlabel",
+                          qt | CapabilityFlag::NoAutoUpperCase |
+                              CapabilityFlag::NoSpellCheck,
+                          true, "dbus");
+        editor.focusQt(true);
+        FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
+        editor.focusQt(false);
+        FCITX_ASSERT(mode(editor) == "Telex (BackSpace)") << mode(editor);
+        updates.count = 0;
+        editor.report();
+        FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
+        FCITX_ASSERT(updates.count == 1) << updates.count;
     }
     {
         // A mode of its own comes first.
@@ -1799,14 +1890,18 @@ void testInputModePicker(Instance *instance) {
         FCITX_ASSERT(editor.press(Key(FcitxKey_Return)));
         FCITX_ASSERT(engine->subMode(*entry, editor) == "Telex (Plain Preedit)")
             << engine->subMode(*entry, editor);
+        StatusUpdates updates(instance);
         for (auto [key, mode] :
              {std::pair{FcitxKey_4, "Telex (Input Method Window)"},
               std::pair{FcitxKey_5, "Telex (BackSpace → Input Method Window)"},
               std::pair{FcitxKey_3, "Telex (Plain Preedit)"}}) {
             editor.press(tilde);
+            updates.count = 0;
             FCITX_ASSERT(editor.press(Key(key)));
             FCITX_ASSERT(engine->subMode(*entry, editor) == mode)
                 << engine->subMode(*entry, editor);
+            // The panel shows it.
+            FCITX_ASSERT(updates.count == 1) << updates.count;
         }
         editor.type(" aa");
         FCITX_ASSERT(editor.text() == "việt~ tiếng ") << editor.text();

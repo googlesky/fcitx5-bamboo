@@ -508,18 +508,37 @@ public:
     // the next key. fcitx5 handles its Password flag itself, which Wayland
     // frontends drop and restore when a client resets.
     void capabilityChanged(CapabilityFlags oldFlags) {
-        if (qtPasswordField(oldFlags) ==
+        if (qtPasswordField(oldFlags) !=
             qtPasswordField(ic_->capabilityFlags())) {
+            commitBuffer();
+        }
+        refreshLabel();
+    }
+
+    // The label tells what the mode does in the field, see
+    // BambooEngine::subMode: it changes with the field's flags and reports,
+    // and the panel asks for it again then. It asks as a field gets focus,
+    // before KWin passes on its text.
+    void refreshLabel() {
+        if (!ic_->hasFocus() ||
+            engine_->instance()->inputMethodEngine(ic_) != engine_) {
             return;
         }
-        commitBuffer();
-        ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
+        const std::pair label{effectiveMode(), methodMode()};
+        if (label != label_) {
+            label_ = label;
+            ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
+        }
     }
+    void labelShown() { label_ = {effectiveMode(), methodMode()}; }
 
     // Whether the focused field reported its text since it got focus, see
     // BambooEngine::isQtTerminal.
     bool textReported() const { return textReported_; }
-    void focusIn() { textReported_ = false; }
+    void focusIn() {
+        textReported_ = false;
+        labelShown();
+    }
 
     void surroundingTextUpdated() {
         surroundingFresh_ = true;
@@ -527,6 +546,7 @@ public:
         if (processing_ || releasing_ || !bambooEngine_) {
             return;
         }
+        refreshLabel();
         // KWin refreshes the text on every key.
         const auto &surroundingText = ic_->surroundingText();
         auto report =
@@ -626,7 +646,6 @@ public:
         if (method != lastMethod_) {
             commitBuffer();
             lastMethod_ = method;
-            ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
         }
         if (method == Method::Exclude) {
             return true;
@@ -775,6 +794,8 @@ public:
         }
         ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
         ic_->updatePreedit();
+        // The configuration changed, or the field.
+        refreshLabel();
     }
 
     // Leaving the input method, the keys typed with it are typed.
@@ -1197,6 +1218,8 @@ private:
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
     bool textReported_ = false;
+    // The typing mode and what it does as the label last told them.
+    std::pair<BambooInputMode, BambooInputMode> label_;
     bool processing_ = false;
     bool releasing_ = false;
     // What the application got right before the word, see
@@ -1506,8 +1529,9 @@ void BambooEngine::setInputMode(InputContext *ic, BambooInputMode mode) {
     }
     iter->mode.setValue(mode);
     safeSaveAsIni(appModes_, AppModeFile);
-    ic->propertyFor(&factory_)->closePicker();
-    ic->updateUserInterface(UserInterfaceComponent::StatusArea);
+    auto *state = ic->propertyFor(&factory_);
+    state->closePicker();
+    state->refreshLabel();
 }
 
 std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
@@ -1573,6 +1597,7 @@ std::string BambooEngine::subModeLabelImpl(const InputMethodEntry & /*entry*/,
 void BambooEngine::activate(const InputMethodEntry &entry,
                             InputContextEvent &event) {
     FCITX_UNUSED(entry);
+    event.inputContext()->propertyFor(&factory_)->labelShown();
     auto &statusArea = event.inputContext()->statusArea();
 
     updateMacroAction(event.inputContext());
