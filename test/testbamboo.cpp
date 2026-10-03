@@ -944,6 +944,25 @@ void testNoUnderline(Instance *instance) {
         FCITX_ASSERT(editor.text() == "chao đi ") << editor.text();
     }
     {
+        // The word comes after what precedes the selection, not after the
+        // last key typed before it.
+        FakeEditor editor(instance, "surrounding", PreeditCaps, false,
+                          "wayland");
+        editor.type("abc.");
+        editor.setReportSurrounding(true);
+        editor.selectBack(1);
+        editor.type("ddi ");
+        FCITX_ASSERT(editor.text() == "abcđi ") << editor.text();
+        // Or the application reported it before our last edit.
+        editor.selectBack(1);
+        editor.setReportSurrounding(false);
+        editor.type("d vi");
+        editor.setReportSurrounding(true);
+        editor.report();
+        editor.type("eet");
+        FCITX_ASSERT(editor.text() == "abcđid viêt") << editor.text();
+    }
+    {
         // Other Wayland frontends are not KWin's.
         FakeEditor editor(instance, "surrounding", PreeditCaps, false,
                           "wayland_v2");
@@ -1309,6 +1328,8 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
     RawConfig appModes;
     appModes.setValueByPath("AppMode/0/Program", "surrounding");
     appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    appModes.setValueByPath("AppMode/1/Program", "backspace");
+    appModes.setValueByPath("AppMode/1/Mode", "BackSpace");
     bamboo->setSubConfig("app_modes", appModes);
     auto editor = std::make_shared<std::unique_ptr<FakeEditor>>();
     // The tone comes before Chrome reported "ngươi".
@@ -1448,6 +1469,88 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
         e.setReportSurrounding(true);
         e.report();
         FCITX_ASSERT(e.text() == "nược") << e.text();
+        editor->reset();
+    });
+    // Typed over a selection with BackSpace keys, then through the
+    // surrounding text: a report behind those first keys waits on.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(
+            instance, "backspace", PreeditCaps | CapabilityFlag::Url, true,
+            "wayland");
+        auto &e = **editor;
+        e.type("chao ban");
+        e.selectBack(3);
+        e.setReportSurrounding(false);
+        e.type("gi");
+        e.reportText("chao g");
+        e.type("f");
+        FCITX_ASSERT(e.text() == "chao gi") << e.text();
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "chao gì") << e.text();
+        editor->reset();
+    });
+    // Typed before the application's first report, the first key goes in
+    // with BackSpace keys: a first report from before it waits on.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(
+            instance, "backspace", PreeditCaps | CapabilityFlag::Url, false,
+            "wayland");
+        auto &e = **editor;
+        e.type("d");
+        e.reportText("");
+        e.type("d");
+        FCITX_ASSERT(e.text() == "d") << e.text();
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "đ") << e.text();
+        editor->reset();
+    });
+    // Reported with the BackSpace keys of the last edit, not its commit.
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(
+            instance, "backspace", PreeditCaps | CapabilityFlag::Url, true,
+            "wayland");
+        auto &e = **editor;
+        e.type("chao ban");
+        e.selectBack(3);
+        e.setReportSurrounding(false);
+        e.type("aa");
+        e.reportText("chao ");
+        e.type("s");
+        FCITX_ASSERT(e.text() == "chao â") << e.text();
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "chao ấ") << e.text();
+        editor->reset();
+    });
+    steps.add(0, [instance, editor]() {
+        *editor = std::make_unique<FakeEditor>(
+            instance, "backspace", PreeditCaps | CapabilityFlag::Url, true,
+            "wayland");
+        auto &e = **editor;
+        e.type("chao ban");
+        e.selectBack(3);
+        e.setReportSurrounding(false);
+        e.type("nuocwj");
+        e.reportText("chao nư");
+        e.type("s");
+        FCITX_ASSERT(e.text() == "chao nược") << e.text();
+    });
+    steps.add(300, [editor]() {
+        auto &e = **editor;
+        e.setReportSurrounding(true);
+        e.report();
+        FCITX_ASSERT(e.text() == "chao nước") << e.text();
         editor->reset();
     });
     // Five keys in a minute waiting for reports behind: the modes that do

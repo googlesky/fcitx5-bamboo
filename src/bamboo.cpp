@@ -441,7 +441,8 @@ public:
                                  : "";
             }
         }
-        if (lastMethod_ == Method::Surrounding) {
+        if (lastMethod_ == Method::Surrounding ||
+            lastMethod_ == Method::BackSpaces) {
             noteEdit();
         }
         lastKeyToApp_ = !keyEvent.filtered();
@@ -666,6 +667,20 @@ public:
         }
         const bool surrounding =
             method == Method::Surrounding || method == Method::BackSpaces;
+        // Typed with BackSpace keys, the word goes on through the surrounding
+        // text once the application reports it, see reportBehind: what came
+        // before it, nothing before the application's first report. Typed
+        // over a selection before the cursor, it comes after what precedes
+        // the selection, which our last key does not tell: see
+        // surroundingInSync.
+        if (method == Method::BackSpaces && surroundingWord().empty()) {
+            const auto &surroundingText = ic_->surroundingText();
+            if (surroundingText.anchor() < surroundingText.cursor()) {
+                separator_.clear();
+            }
+            wordStart_ = std::string(textBefore(
+                std::min(surroundingText.cursor(), surroundingText.anchor())));
+        }
         if (method == Method::Surrounding &&
             !surroundingInSync(surroundingWord())) {
             // Chrome reports its text late, see waitForReport.
@@ -729,7 +744,8 @@ public:
     void flush() {
         const int count = EnginePullDeleteCount(bambooEngine_.handle());
         UniqueCPtr<char> commit(EnginePullCommit(bambooEngine_.handle()));
-        if (lastMethod_ == Method::Surrounding) {
+        if (lastMethod_ == Method::Surrounding ||
+            lastMethod_ == Method::BackSpaces) {
             noteDeletion(count);
         }
         changeApplicationText(count, commit ? commit.get() : "",
@@ -1043,15 +1059,18 @@ private:
 
     // Empty when the application reports no text.
     std::string_view textBeforeCursor() const {
+        return textBefore(ic_->surroundingText().cursor());
+    }
+    std::string_view textBefore(unsigned int position) const {
         const auto &surroundingText = ic_->surroundingText();
         const auto &text = surroundingText.text();
         const auto length = utf8::lengthValidated(text);
         if (!surroundingText.isValid() || length == utf8::INVALID_LENGTH ||
-            surroundingText.cursor() > length) {
+            position > length) {
             return {};
         }
         return std::string_view(text).substr(
-            0, utf8::ncharByteLength(text.begin(), surroundingText.cursor()));
+            0, utf8::ncharByteLength(text.begin(), position));
     }
 
     // The word as the application shows it.
