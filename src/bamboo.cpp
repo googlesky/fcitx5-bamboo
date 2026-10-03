@@ -525,13 +525,13 @@ public:
             engine_->instance()->inputMethodEngine(ic_) != engine_) {
             return;
         }
-        const std::pair label{effectiveMode(), methodMode()};
+        auto label = currentLabel();
         if (label != label_) {
-            label_ = label;
+            label_ = std::move(label);
             ic_->updateUserInterface(UserInterfaceComponent::StatusArea);
         }
     }
-    void labelShown() { label_ = {effectiveMode(), methodMode()}; }
+    void labelShown() { label_ = currentLabel(); }
 
     // Whether the focused field reported its text since it got focus, see
     // BambooEngine::isQtTerminal.
@@ -956,6 +956,13 @@ public:
     }
 
 private:
+    // The input method's name with the typing mode and what it does, for
+    // label_: refreshLabel and labelShown must agree on it.
+    std::tuple<std::string, BambooInputMode, BambooInputMode>
+    currentLabel() const {
+        return {*engine_->config().inputMethod, effectiveMode(), methodMode()};
+    }
+
     // Deletes count characters before the cursor, with BackSpace keys or
     // through the surrounding text, then commits text. What the application
     // reported is stale until it reports again.
@@ -1243,8 +1250,9 @@ private:
     bool surroundingFresh_ = false;
     bool lastKeyToApp_ = true;
     bool textReported_ = false;
-    // The typing mode and what it does as the label last told them.
-    std::pair<BambooInputMode, BambooInputMode> label_;
+    // The input method's name with the typing mode and what it does, as the
+    // label last told them, see currentLabel.
+    std::tuple<std::string, BambooInputMode, BambooInputMode> label_;
     bool processing_ = false;
     bool releasing_ = false;
     // What the application got right before the word, see

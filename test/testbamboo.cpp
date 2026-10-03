@@ -1948,6 +1948,14 @@ void testKindModes(Instance *instance) {
         bamboo->setConfig(config);
         FCITX_ASSERT(mode(editor) == "Telex (Plain Preedit)") << mode(editor);
         FCITX_ASSERT(updates.count == 1) << updates.count;
+        // And as the input method does, which the label starts with.
+        updates.count = 0;
+        config.setValueByPath("InputMethod", "VNI");
+        bamboo->setConfig(config);
+        FCITX_ASSERT(mode(editor) == "VNI (Plain Preedit)") << mode(editor);
+        FCITX_ASSERT(updates.count == 1) << updates.count;
+        config.setValueByPath("InputMethod", "Telex");
+        bamboo->setConfig(config);
         config.setValueByPath("KindModes/WaylandApplications",
                               "Input Method Window");
         bamboo->setConfig(config);
