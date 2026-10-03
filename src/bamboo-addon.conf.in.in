@@ -13,3 +13,4 @@ Configurable=True
 
 [Addon/OptionalDependencies]
 0=clipboard
+1=notifications

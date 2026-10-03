@@ -4,7 +4,7 @@ set( fcitx_bamboo_sources
 )
 
 add_fcitx5_addon(bamboo ${fcitx_bamboo_sources})
-target_link_libraries(bamboo Fcitx5::Core Fcitx5::Config Fcitx5::Module::Clipboard Bamboo::Core Pthread::Pthread)
+target_link_libraries(bamboo Fcitx5::Core Fcitx5::Config Fcitx5::Module::Clipboard Fcitx5::Module::Notifications Bamboo::Core Pthread::Pthread)
 target_include_directories(bamboo PRIVATE ${PROJECT_BINARY_DIR})
 install(TARGETS bamboo DESTINATION "${CMAKE_INSTALL_LIBDIR}/fcitx5")
 fcitx5_translate_desktop_file(bamboo.conf.in bamboo.conf)

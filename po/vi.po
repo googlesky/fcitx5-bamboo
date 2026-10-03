@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: fcitx5-bamboo\n"
 "Report-Msgid-Bugs-To: https://github.com/googlesky/fcitx5-bamboo-plus/"
 "issues\n"
-"POT-Creation-Date: 2026-10-03 12:15+0700\n"
+"POT-Creation-Date: 2026-10-03 14:21+0700\n"
 "PO-Revision-Date: 2022-06-04 06:04+0000\n"
 "Last-Translator: Zen Fas, 2022\n"
 "Language-Team: Vietnamese (https://www.transifex.com/fcitx/teams/12005/vi/)\n"
@@ -19,6 +19,14 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/bamboo.cpp:1471
+msgid ""
+"%1 reports its text late, typing waits for it. The BackSpace typing mode, in "
+"the table of typing modes (~), does not wait."
+msgstr ""
+"%1 báo chữ chậm, gõ phải chờ nó. Chế độ gõ BackSpace, trong bảng chế độ gõ "
+"(~), không phải chờ."
 
 #: src/bambooconfig.h:218
 msgid ""
@@ -40,7 +48,7 @@ msgstr "Theo kiểu gõ"
 msgid "BackSpace"
 msgstr "Gõ thẳng, sửa bằng BackSpace"
 
-#: org.fcitx.Fcitx5.Addon.Bamboo.metainfo.xml.in:7 src/bamboo.conf.in:3
+#: src/bamboo.cpp:1468
 msgid "Bamboo"
 msgstr "Bamboo"
 
@@ -56,7 +64,7 @@ msgstr "Gõ tắt chữ hoa"
 msgid "Capitalize the first letter of sentences"
 msgstr "Tự viết hoa chữ cái đầu câu"
 
-#: src/bamboo.cpp:143
+#: src/bamboo.cpp:144
 msgid "Capitalized words"
 msgstr "Viết Hoa Đầu Từ"
 
@@ -64,7 +72,7 @@ msgstr "Viết Hoa Đầu Từ"
 msgid "Choose Typing Mode for Application"
 msgstr "Phím chọn chế độ gõ cho ứng dụng"
 
-#: src/bamboo.cpp:818
+#: src/bamboo.cpp:863
 msgid "Convert"
 msgstr "Chuyển đổi"
 
@@ -109,11 +117,11 @@ msgstr "Esc chuyển sang tiếng Anh (cần cho vim), không tự viết hoa đ
 msgid "Exclude"
 msgstr "Loại trừ (tắt tiếng Việt)"
 
-#: src/bamboo.cpp:145
+#: src/bamboo.cpp:146
 msgid "From"
 msgstr "Từ bảng mã"
 
-#: src/bamboo.cpp:1179 src/bambooconfig.h:184
+#: src/bamboo.cpp:1242 src/bambooconfig.h:184
 msgid "Input Method"
 msgstr "Kiểu gõ"
 
@@ -125,23 +133,23 @@ msgstr "Hiện trong cửa sổ bộ gõ"
 msgid "Key"
 msgstr "Phím"
 
-#: src/bamboo.cpp:140
+#: src/bamboo.cpp:141
 msgid "Lower case"
 msgstr "chữ thường"
 
-#: src/bamboo.cpp:1247 src/bambooconfig.h:87
+#: src/bamboo.cpp:1310 src/bambooconfig.h:87
 msgid "Macro"
 msgstr "Gõ tắt"
 
-#: src/bamboo.cpp:1487
+#: src/bamboo.cpp:1572
 msgid "Macro Disabled"
 msgstr "Gõ tắt bị tắt"
 
-#: src/bamboo.cpp:1486
+#: src/bamboo.cpp:1571
 msgid "Macro Enabled"
 msgstr "Gõ tắt đang mở"
 
-#: src/bamboo.cpp:802
+#: src/bamboo.cpp:847
 msgid "Nothing to convert"
 msgstr "Không có gì để chuyển đổi"
 
@@ -149,7 +157,7 @@ msgstr "Không có gì để chuyển đổi"
 msgid "Output Charset"
 msgstr "Bảng Mã"
 
-#: src/bamboo.cpp:1206
+#: src/bamboo.cpp:1269
 msgid "Output charset"
 msgstr "Bảng mã"
 
@@ -173,15 +181,15 @@ msgstr "Gõ nhanh"
 msgid "Restore Key Stroke"
 msgstr "Khôi phục phím bấm"
 
-#: src/bamboo.cpp:1478
+#: src/bamboo.cpp:1563
 msgid "Spell Check Disabled"
 msgstr "Kiểm tra chính tả bị tắt"
 
-#: src/bamboo.cpp:1477
+#: src/bamboo.cpp:1562
 msgid "Spell Check Enabled"
 msgstr "Kiểm tra chính tả đang mở"
 
-#: src/bamboo.cpp:1235
+#: src/bamboo.cpp:1298
 msgid "Spell check"
 msgstr "Kiểm tra chính tả"
 
@@ -204,11 +212,11 @@ msgid ""
 msgstr ""
 "Terminal gõ qua KWin nhận chữ trực tiếp thay vì hiện trong cửa sổ bộ gõ"
 
-#: src/bamboo.cpp:792
+#: src/bamboo.cpp:837
 msgid "Too long to convert"
 msgstr "Văn bản quá dài để chuyển đổi"
 
-#: src/bamboo.cpp:131
+#: src/bamboo.cpp:132
 msgid "Typed again with the input method"
 msgstr "Gõ lại bằng kiểu gõ đang dùng"
 
@@ -220,15 +228,19 @@ msgstr "Chế độ gõ"
 msgid "Typing Mode per Application"
 msgstr "Chế độ gõ theo ứng dụng"
 
-#: src/bamboo.cpp:854
+#: src/bamboo.cpp:897
 msgid "Typing mode for"
 msgstr "Chế độ gõ cho"
+
+#: src/bamboo.cpp:1469
+msgid "Typing waits for the application"
+msgstr "Gõ phải chờ ứng dụng"
 
 #: src/bambooconfig.h:251
 msgid "Underline the preedit text"
 msgstr "Gạch chân từ đang viết"
 
-#: src/bamboo.cpp:137
+#: src/bamboo.cpp:138
 msgid "Upper case"
 msgstr "CHỮ HOA"
 
@@ -252,7 +264,7 @@ msgstr "Kiểu gõ tiếng Việt"
 msgid "W with nothing to mark types"
 msgstr "Phím W đứng riêng gõ ra"
 
-#: src/bamboo.cpp:134
+#: src/bamboo.cpp:135
 msgid "Without diacritics"
 msgstr "Bỏ dấu"
 

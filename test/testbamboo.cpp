@@ -999,6 +999,21 @@ void testModeLabel(Instance *instance) {
             << engine->subMode(*entry, editor);
     }
     {
+        // What Surrounding Text does where the text is not edited in place.
+        FakeEditor editor(instance, "surrounding",
+                          PreeditCaps | CapabilityFlag::GetIMInfoOnFocus);
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (Surrounding Text: Plain Preedit)")
+            << engine->subMode(*entry, editor);
+    }
+    {
+        FakeEditor editor(instance, "surrounding", PreeditCaps, false,
+                          "bambootest");
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (Surrounding Text: Input Method Window)")
+            << engine->subMode(*entry, editor);
+    }
+    {
         FakeEditor editor(instance, "excluded", PreeditCaps);
         FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
     }
@@ -1213,6 +1228,8 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
     RawConfig appModes;
     appModes.setValueByPath("AppMode/0/Program", "surrounding");
     appModes.setValueByPath("AppMode/0/Mode", "Surrounding Text");
+    appModes.setValueByPath("AppMode/1/Program", "backspace");
+    appModes.setValueByPath("AppMode/1/Mode", "BackSpace");
     bamboo->setSubConfig("app_modes", appModes);
     auto editor = std::make_shared<std::unique_ptr<FakeEditor>>();
     // The tone comes before Chrome reported "ngươi".
@@ -1234,13 +1251,42 @@ void testSlowReports(Instance *instance, TimedSteps &steps) {
         FCITX_ASSERT(e.text() == "người") << e.text();
         editor->reset();
     });
-    // No report at all: after a second the key starts a new word.
-    steps.add(0, start);
+    // No report at all: after a second the key starts a new word, and the
+    // BackSpace mode, which waits for nothing, is suggested.
+    auto log = std::make_shared<std::ostringstream>();
+    steps.add(0, [start, log]() {
+        Log::setLogStream(*log);
+        start();
+    });
     steps.add(600, [editor]() {
         FCITX_ASSERT((*editor)->text() == "ngươi") << (*editor)->text();
     });
-    steps.add(700, [editor]() {
+    steps.add(700, [editor, log]() {
+        Log::setLogStream(std::cerr);
         FCITX_ASSERT((*editor)->text() == "ngươif") << (*editor)->text();
+        FCITX_ASSERT(
+            log->str().find("suggesting the BackSpace mode for surrounding") !=
+            std::string::npos)
+            << log->str();
+        editor->reset();
+    });
+    // In the BackSpace mode only address bars wait: nothing to suggest.
+    steps.add(0, [instance, editor, log]() {
+        log->str("");
+        Log::setLogStream(*log);
+        *editor = std::make_unique<FakeEditor>(
+            instance, "backspace", PreeditCaps | CapabilityFlag::Url, true,
+            "wayland");
+        auto &e = **editor;
+        e.type("nguoi");
+        e.setReportSurrounding(false);
+        e.type("wf");
+    });
+    steps.add(1100, [editor, log]() {
+        Log::setLogStream(std::cerr);
+        FCITX_ASSERT(log->str().find("suggesting the BackSpace mode") ==
+                     std::string::npos)
+            << log->str();
         editor->reset();
     });
     // The application changed its text: no waiting on.
@@ -1444,6 +1490,21 @@ void testTypingModes(Instance *instance) {
         editor.report();
         FCITX_ASSERT(editor.text() == "việ") << editor.text();
     }
+    {
+        // The label tells what the mode does in the field.
+        FakeEditor editor(instance, "backspace", PreeditCaps, true,
+                          "bambootest");
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (BackSpace: Input Method Window)")
+            << engine->subMode(*entry, editor);
+    }
+    {
+        FakeEditor editor(instance, "backspace",
+                          PreeditCaps | CapabilityFlag::Url, true, "wayland");
+        FCITX_ASSERT(engine->subMode(*entry, editor) ==
+                     "Telex (BackSpace: Surrounding Text)")
+            << engine->subMode(*entry, editor);
+    }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
         // Elsewhere forwarded keys may come after our commits.
         FakeEditor editor(instance, "backspace", PreeditCaps, true, frontend);
@@ -1493,7 +1554,7 @@ void testInputModePicker(Instance *instance) {
             << engine->subMode(*entry, editor);
         for (auto [key, mode] :
              {std::pair{FcitxKey_4, "Telex (Input Method Window)"},
-              std::pair{FcitxKey_5, "Telex (BackSpace)"},
+              std::pair{FcitxKey_5, "Telex (BackSpace: Input Method Window)"},
               std::pair{FcitxKey_3, "Telex (Plain Preedit)"}}) {
             editor.press(tilde);
             FCITX_ASSERT(editor.press(Key(key)));

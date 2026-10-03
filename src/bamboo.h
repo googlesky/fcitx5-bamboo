@@ -78,6 +78,10 @@ public:
 
     Instance *instance() { return instance_; }
     FCITX_ADDON_DEPENDENCY_LOADER(clipboard, instance_->addonManager());
+    FCITX_ADDON_DEPENDENCY_LOADER(notifications, instance_->addonManager());
+    // Tells, once, that the BackSpace mode does not wait for the reports
+    // the program of ic gives late.
+    void suggestBackSpaceMode(InputContext *ic);
 
     void reloadConfig() override;
     const Configuration *getConfig() const override { return &config_; }

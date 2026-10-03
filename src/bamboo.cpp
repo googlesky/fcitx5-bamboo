@@ -42,6 +42,7 @@
 #include <fcitx/userinterfacemanager.h>
 #include <fcntl.h>
 #include <memory>
+#include <notifications_public.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -358,6 +359,25 @@ public:
             return Method::BackSpaces;
         }
         return Method::PanelPreedit;
+    }
+
+    // The typing mode doing what method() picks, for the label.
+    BambooInputMode methodMode() const {
+        switch (method()) {
+        case Method::Exclude:
+            return BambooInputMode::Exclude;
+        case Method::Preedit:
+            return BambooInputMode::Preedit;
+        case Method::PlainPreedit:
+            return BambooInputMode::PlainPreedit;
+        case Method::PanelPreedit:
+            return BambooInputMode::InputMethodWindow;
+        case Method::Surrounding:
+            return BambooInputMode::SurroundingText;
+        case Method::BackSpaces:
+            return BambooInputMode::BackSpace;
+        }
+        return BambooInputMode::Preedit;
     }
 
     void keyEvent(KeyEvent &keyEvent) {
@@ -1050,6 +1070,16 @@ private:
         const auto time = now(CLOCK_MONOTONIC);
         if (time < waitingSince_ + HeldKeyMaxWait && reportBehind()) {
             FCITX_BAMBOO_DEBUG() << "report of the word behind, waiting on";
+            // Behind a few times a minute, typing waits often.
+            std::erase_if(behindWaits_, [time](uint64_t when) {
+                return when + 60000000 < time;
+            });
+            behindWaits_.push_back(time);
+            if (behindWaits_.size() >= 5 && !suggested_ &&
+                effectiveMode() == BambooInputMode::SurroundingText) {
+                suggested_ = true;
+                engine_->suggestBackSpaceMode(ic_);
+            }
             heldTimeout_->setTime(std::min(time + HeldKeyTimeout,
                                            waitingSince_ + HeldKeyMaxWait));
             heldTimeout_->setOneShot();
@@ -1164,6 +1194,9 @@ private:
     std::deque<Key> heldKeys_;
     std::unique_ptr<EventSourceTime> heldTimeout_;
     uint64_t waitingSince_ = 0;
+    // When reports were behind lately, see reportOverdue.
+    std::vector<uint64_t> behindWaits_;
+    bool suggested_ = false;
     // How the text before the cursor ends after each of our last edits,
     // oldest first, and what it was before the word, see reportBehind.
     std::deque<std::string> editTails_;
@@ -1412,13 +1445,35 @@ void BambooEngine::setInputMode(InputContext *ic, BambooInputMode mode) {
 
 std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
                                   fcitx::InputContext &inputContext) {
-    const auto mode = inputContext.propertyFor(&factory_)->effectiveMode();
+    const auto *state = inputContext.propertyFor(&factory_);
+    const auto mode = state->effectiveMode();
     if (mode == BambooInputMode::Preedit) {
         return *config_.inputMethod;
     }
-    return stringutils::concat(*config_.inputMethod, " (",
-                               BambooInputModeI18NAnnotation::toString(mode),
-                               ")");
+    // What the mode does in this field, when it does something else.
+    const auto doing = state->methodMode();
+    auto label = BambooInputModeI18NAnnotation::toString(mode);
+    if (doing != mode) {
+        label = stringutils::concat(
+            label, ": ", BambooInputModeI18NAnnotation::toString(doing));
+    }
+    return stringutils::concat(*config_.inputMethod, " (", label, ")");
+}
+
+void BambooEngine::suggestBackSpaceMode(InputContext *ic) {
+    FCITX_BAMBOO_DEBUG() << "suggesting the BackSpace mode for "
+                         << ic->program();
+    if (auto *notifications = this->notifications()) {
+        notifications->call<INotifications::showTip>(
+            "bamboo-backspace-mode", _("Bamboo"), "fcitx_bamboo",
+            _("Typing waits for the application"),
+            stringutils::replaceAll(
+                _("%1 reports its text late, typing waits for it. The "
+                  "BackSpace typing mode, in the table of typing modes (~), "
+                  "does not wait."),
+                "%1", ic->program()),
+            -1);
+    }
 }
 
 std::string BambooEngine::subModeLabelImpl(const InputMethodEntry & /*entry*/,
