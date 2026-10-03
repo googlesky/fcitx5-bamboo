@@ -1033,17 +1033,18 @@ void testModeLabel(Instance *instance) {
     }
     {
         // What Surrounding Text does where the text is not edited in place.
+        // Panels split the status kimpanel sends them on colons.
         FakeEditor editor(instance, "surrounding",
                           PreeditCaps | CapabilityFlag::GetIMInfoOnFocus);
         FCITX_ASSERT(engine->subMode(*entry, editor) ==
-                     "Telex (Surrounding Text: Plain Preedit)")
+                     "Telex (Surrounding Text → Plain Preedit)")
             << engine->subMode(*entry, editor);
     }
     {
         FakeEditor editor(instance, "surrounding", PreeditCaps, false,
                           "bambootest");
         FCITX_ASSERT(engine->subMode(*entry, editor) ==
-                     "Telex (Surrounding Text: Input Method Window)")
+                     "Telex (Surrounding Text → Input Method Window)")
             << engine->subMode(*entry, editor);
     }
     {
@@ -1572,14 +1573,14 @@ void testTypingModes(Instance *instance) {
         FakeEditor editor(instance, "backspace", PreeditCaps, true,
                           "bambootest");
         FCITX_ASSERT(engine->subMode(*entry, editor) ==
-                     "Telex (BackSpace: Input Method Window)")
+                     "Telex (BackSpace → Input Method Window)")
             << engine->subMode(*entry, editor);
     }
     {
         FakeEditor editor(instance, "backspace",
                           PreeditCaps | CapabilityFlag::Url, true, "wayland");
         FCITX_ASSERT(engine->subMode(*entry, editor) ==
-                     "Telex (BackSpace: Surrounding Text)")
+                     "Telex (BackSpace → Surrounding Text)")
             << engine->subMode(*entry, editor);
     }
     for (const char *frontend : {"bambootest", "wayland_v2"}) {
@@ -1702,7 +1703,7 @@ void testInputModePicker(Instance *instance) {
             << engine->subMode(*entry, editor);
         for (auto [key, mode] :
              {std::pair{FcitxKey_4, "Telex (Input Method Window)"},
-              std::pair{FcitxKey_5, "Telex (BackSpace: Input Method Window)"},
+              std::pair{FcitxKey_5, "Telex (BackSpace → Input Method Window)"},
               std::pair{FcitxKey_3, "Telex (Plain Preedit)"}}) {
             editor.press(tilde);
             FCITX_ASSERT(editor.press(Key(key)));

@@ -1503,12 +1503,13 @@ std::string BambooEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
     if (mode == BambooInputMode::Preedit) {
         return *config_.inputMethod;
     }
-    // What the mode does in this field, when it does something else.
+    // What the mode does in this field, when it does something else. No
+    // colons: kimpanel sends panels its status in fields split on them.
     const auto doing = state->methodMode();
     auto label = BambooInputModeI18NAnnotation::toString(mode);
     if (doing != mode) {
         label = stringutils::concat(
-            label, ": ", BambooInputModeI18NAnnotation::toString(doing));
+            label, " → ", BambooInputModeI18NAnnotation::toString(doing));
     }
     return stringutils::concat(*config_.inputMethod, " (", label, ")");
 }
