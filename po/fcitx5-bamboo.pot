@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-bamboo\n"
 "Report-Msgid-Bugs-To: https://github.com/googlesky/fcitx5-bamboo-plus/issues\n"
-"POT-Creation-Date: 2026-10-03 15:41+0700\n"
+"POT-Creation-Date: 2026-10-03 16:21+0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -15,31 +15,35 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/bamboo.cpp:1542
+#: src/bamboo.cpp:1570
 msgid ""
 "%1 reports its text late, typing waits for it. Typing modes that do not "
 "wait, in Typing Mode per Application in the configuration: BackSpace for "
 "Chromium-based applications, Input Method Window for any."
 msgstr ""
 
-#: src/bamboo.cpp:1547
+#: src/bamboo.cpp:1575
 msgid ""
 "%1 reports its text late, typing waits for it. Typing modes that do not "
 "wait, in the table of typing modes (%2): BackSpace for Chromium-based "
 "applications, Input Method Window for any."
 msgstr ""
 
-#: src/bambooconfig.h:258
+#: src/bambooconfig.h:260
 msgid ""
 "After BackSpace, arrows or a click, a key right after a word edits it like "
 "one being typed"
 msgstr ""
 
-#: src/bambooconfig.h:287
+#: src/bambooconfig.h:289
 msgid "Allow type with more freedom"
 msgstr ""
 
-#: src/bambooconfig.h:196
+#: src/bambooconfig.h:156
+msgid "Applications through fcitx5-gtk (GTK; Chromium on X11)"
+msgstr ""
+
+#: src/bambooconfig.h:198
 msgid "As the input method does"
 msgstr ""
 
@@ -47,7 +51,7 @@ msgstr ""
 msgid "BackSpace"
 msgstr ""
 
-#: src/bamboo.cpp:1556
+#: src/bamboo.cpp:1584
 msgid "Bamboo"
 msgstr ""
 
@@ -55,11 +59,11 @@ msgstr ""
 msgid "Bamboo Wrapper For Fcitx"
 msgstr ""
 
-#: src/bambooconfig.h:282
+#: src/bambooconfig.h:284
 msgid "Capitalize Macro"
 msgstr ""
 
-#: src/bambooconfig.h:250
+#: src/bambooconfig.h:252
 msgid "Capitalize the first letter of sentences"
 msgstr ""
 
@@ -67,19 +71,19 @@ msgstr ""
 msgid "Capitalized words"
 msgstr ""
 
-#: src/bambooconfig.h:263
+#: src/bambooconfig.h:265
 msgid "Choose Typing Mode for Application"
 msgstr ""
 
-#: src/bamboo.cpp:865
+#: src/bamboo.cpp:890
 msgid "Convert"
 msgstr ""
 
-#: src/bambooconfig.h:269
+#: src/bambooconfig.h:271
 msgid "Convert the selection or the word before the cursor"
 msgstr ""
 
-#: src/bambooconfig.h:98 src/bambooconfig.h:292
+#: src/bambooconfig.h:98 src/bambooconfig.h:294
 msgid "Custom Keymap"
 msgstr ""
 
@@ -87,31 +91,31 @@ msgstr ""
 msgid "Default"
 msgstr ""
 
-#: src/bambooconfig.h:227
+#: src/bambooconfig.h:229
 msgid "Default Typing Mode"
 msgstr ""
 
-#: src/bambooconfig.h:235
+#: src/bambooconfig.h:237
 msgid "Disable Vietnamese in email, number and phone fields"
 msgstr ""
 
-#: src/bambooconfig.h:254
+#: src/bambooconfig.h:256
 msgid "Edit the word before the cursor"
 msgstr ""
 
-#: src/bambooconfig.h:281
+#: src/bambooconfig.h:283
 msgid "Enable Macro"
 msgstr ""
 
-#: src/bambooconfig.h:276
+#: src/bambooconfig.h:278
 msgid "Enable spell check"
 msgstr ""
 
-#: src/bambooconfig.h:247
+#: src/bambooconfig.h:249
 msgid "Escape switches to English in terminals and code editors"
 msgstr ""
 
-#: src/bambooconfig.h:177
+#: src/bambooconfig.h:179
 msgid ""
 "Escape switches to English, as vim needs, and sentences are not capitalized"
 msgstr ""
@@ -124,11 +128,7 @@ msgstr ""
 msgid "From"
 msgstr ""
 
-#: src/bambooconfig.h:154
-msgid "GTK applications"
-msgstr ""
-
-#: src/bamboo.cpp:1255 src/bambooconfig.h:222
+#: src/bamboo.cpp:1282 src/bambooconfig.h:224
 msgid "Input Method"
 msgstr ""
 
@@ -144,27 +144,27 @@ msgstr ""
 msgid "Lower case"
 msgstr ""
 
-#: src/bamboo.cpp:1323 src/bambooconfig.h:87
+#: src/bamboo.cpp:1350 src/bambooconfig.h:87
 msgid "Macro"
 msgstr ""
 
-#: src/bamboo.cpp:1654
+#: src/bamboo.cpp:1683
 msgid "Macro Disabled"
 msgstr ""
 
-#: src/bamboo.cpp:1653
+#: src/bamboo.cpp:1682
 msgid "Macro Enabled"
 msgstr ""
 
-#: src/bamboo.cpp:849
+#: src/bamboo.cpp:874
 msgid "Nothing to convert"
 msgstr ""
 
-#: src/bambooconfig.h:225
+#: src/bambooconfig.h:227
 msgid "Output Charset"
 msgstr ""
 
-#: src/bamboo.cpp:1282
+#: src/bamboo.cpp:1309
 msgid "Output charset"
 msgstr ""
 
@@ -176,35 +176,35 @@ msgstr ""
 msgid "Preedit"
 msgstr ""
 
-#: src/bambooconfig.h:167
+#: src/bambooconfig.h:169
 msgid "Program"
 msgstr ""
 
 #: src/bambooconfig.h:148
-msgid "Qt applications"
+msgid "Qt applications through fcitx5-qt"
 msgstr ""
 
-#: src/bambooconfig.h:151
-msgid "Qt terminals reporting no text (Konsole)"
+#: src/bambooconfig.h:152
+msgid "Qt terminals through fcitx5-qt (Konsole)"
 msgstr ""
 
-#: src/bambooconfig.h:289
+#: src/bambooconfig.h:291
 msgid "Quick Typing"
 msgstr ""
 
-#: src/bambooconfig.h:217
+#: src/bambooconfig.h:219
 msgid "Restore Key Stroke"
 msgstr ""
 
-#: src/bamboo.cpp:1645
+#: src/bamboo.cpp:1674
 msgid "Spell Check Disabled"
 msgstr ""
 
-#: src/bamboo.cpp:1644
+#: src/bamboo.cpp:1673
 msgid "Spell Check Enabled"
 msgstr ""
 
-#: src/bamboo.cpp:1311
+#: src/bamboo.cpp:1338
 msgid "Spell check"
 msgstr ""
 
@@ -212,21 +212,21 @@ msgstr ""
 msgid "Surrounding Text"
 msgstr ""
 
-#: src/bambooconfig.h:239
+#: src/bambooconfig.h:241
 msgid "Surrounding Text in Wayland apps without text: edit with BackSpace"
 msgstr ""
 
-#: src/bambooconfig.h:173
+#: src/bambooconfig.h:175
 msgid "Terminal or code editor"
 msgstr ""
 
-#: src/bambooconfig.h:243
+#: src/bambooconfig.h:245
 msgid ""
 "Terminals typing through KWin get the word as text instead of in the input "
 "method window"
 msgstr ""
 
-#: src/bamboo.cpp:839
+#: src/bamboo.cpp:864
 msgid "Too long to convert"
 msgstr ""
 
@@ -234,27 +234,27 @@ msgstr ""
 msgid "Typed again with the input method"
 msgstr ""
 
-#: src/bambooconfig.h:169
+#: src/bambooconfig.h:171
 msgid "Typing Mode"
 msgstr ""
 
-#: src/bambooconfig.h:185 src/bambooconfig.h:231
+#: src/bambooconfig.h:187 src/bambooconfig.h:233
 msgid "Typing Mode per Application"
 msgstr ""
 
-#: src/bambooconfig.h:230
+#: src/bambooconfig.h:232
 msgid "Typing Mode per Kind of Application"
 msgstr ""
 
-#: src/bamboo.cpp:899
+#: src/bamboo.cpp:924
 msgid "Typing mode for"
 msgstr ""
 
-#: src/bamboo.cpp:1557
+#: src/bamboo.cpp:1585
 msgid "Typing waits for the application"
 msgstr ""
 
-#: src/bambooconfig.h:291
+#: src/bambooconfig.h:293
 msgid "Underline the preedit text"
 msgstr ""
 
@@ -262,11 +262,11 @@ msgstr ""
 msgid "Upper case"
 msgstr ""
 
-#: src/bambooconfig.h:278
+#: src/bambooconfig.h:280
 msgid "Use dictionary for spell check"
 msgstr ""
 
-#: src/bambooconfig.h:285
+#: src/bambooconfig.h:287
 msgid "Use oà, _uý (instead of òa, úy)"
 msgstr ""
 
@@ -278,42 +278,44 @@ msgstr ""
 msgid "Vietnamese input method"
 msgstr ""
 
-#: src/bambooconfig.h:204
+#: src/bambooconfig.h:206
 msgid "W with nothing to mark types"
 msgstr ""
 
-#: src/bambooconfig.h:158
-msgid "Wayland applications through KWin (Chrome, Electron, Alacritty)"
+#: src/bambooconfig.h:160
+msgid ""
+"Wayland applications through KWin (Chromium, Alacritty; Qt, GTK without "
+"fcitx5's modules)"
 msgstr ""
 
 #: src/bamboo.cpp:135
 msgid "Without diacritics"
 msgstr ""
 
-#: src/bambooconfig.h:280
+#: src/bambooconfig.h:282
 msgid "Words kept by spell check"
 msgstr ""
 
-#: src/bambooconfig.h:162
+#: src/bambooconfig.h:164
 msgid "X11 applications through XIM"
 msgstr ""
 
-#: src/bambooconfig.h:208
+#: src/bambooconfig.h:210
 msgid "cc→ch, gg→gi, kk→kh, nn→ng, pp→ph, qq→qu, tt→th"
 msgstr ""
 
-#: src/bambooconfig.h:210
+#: src/bambooconfig.h:212
 msgid "f→ph, j→gi, w→qu at word start"
 msgstr ""
 
-#: src/bambooconfig.h:212
+#: src/bambooconfig.h:214
 msgid "g→ng, h→nh, k→ch at word end"
 msgstr ""
 
-#: src/bambooconfig.h:196
+#: src/bambooconfig.h:198
 msgid "Ư"
 msgstr ""
 
-#: src/bambooconfig.h:197
+#: src/bambooconfig.h:199
 msgid "Ư, but W at word start"
 msgstr ""

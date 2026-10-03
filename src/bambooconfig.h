@@ -141,22 +141,24 @@ FCITX_CONFIG_ENUM_NAME_WITH_I18N(BambooKindMode, N_("Default"), N_("Preedit"),
                                  N_("Exclude"));
 
 // Applications by how they reach fcitx5, for those without a mode of their
-// own.
+// own. Others, through IBus or other compositors, take the default mode.
 FCITX_CONFIGURATION(
     BambooKindModes,
     OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> qtApps{
-        this, "QtApplications", _("Qt applications"), BambooKindMode::Default};
+        this, "QtApplications", _("Qt applications through fcitx5-qt"),
+        BambooKindMode::Default};
     OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation>
         qtTerminals{this, "QtTerminals",
-                    _("Qt terminals reporting no text (Konsole)"),
+                    _("Qt terminals through fcitx5-qt (Konsole)"),
                     BambooKindMode::Default};
     OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> gtkApps{
-        this, "GtkApplications", _("GTK applications"),
+        this, "GtkApplications",
+        _("Applications through fcitx5-gtk (GTK; Chromium on X11)"),
         BambooKindMode::Default};
     OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation>
         waylandApps{this, "WaylandApplications",
-                    _("Wayland applications through KWin (Chrome, Electron, "
-                      "Alacritty)"),
+                    _("Wayland applications through KWin (Chromium, "
+                      "Alacritty; Qt, GTK without fcitx5's modules)"),
                     BambooKindMode::Default};
     OptionWithAnnotation<BambooKindMode, BambooKindModeI18NAnnotation> x11Apps{
         this, "X11Applications", _("X11 applications through XIM"),

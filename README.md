@@ -60,13 +60,17 @@ current application (press it twice to type `~`):
 
 The default mode, the modes per application and the key are in the
 configuration, with modes per kind of application for those without their
-own: Qt applications, Qt terminals reporting no text (Konsole), GTK
-applications, Wayland applications through KWin (Chrome, Electron,
-Alacritty) and X11 applications through XIM. The label of the input method
-tells what the mode does where it does something else, as "VNI (Surrounding
-Text → BackSpace)" in Alacritty. An application whose late reports keep
-typing waiting, five keys in a minute, gets a notification, once, suggesting
-the modes that do not wait: BackSpace for Chromium-based applications, Input
+own, by how they reach Fcitx: Qt applications through fcitx5-qt
+(`QT_IM_MODULE=fcitx`), Qt terminals among them (Konsole), applications
+through fcitx5-gtk (`GTK_IM_MODULE=fcitx`: GTK applications, Chromium and
+Electron on X11), Wayland applications through KWin (Chromium and Electron on
+Wayland, Alacritty, Qt and GTK applications without Fcitx's modules) and X11
+applications through XIM. Others, through IBus or the input method of other
+compositors, take the default mode. The label of the input method tells what
+the mode does where it does something else, as "VNI (Surrounding Text →
+BackSpace)" in Alacritty. An application whose late reports keep typing
+waiting, five keys in a minute, gets a notification, once, suggesting the
+modes that do not wait: BackSpace for Chromium-based applications, Input
 Method Window for any.
 
 ### More, from UniKey, OpenKey and others

@@ -1770,6 +1770,8 @@ void testKindModes(Instance *instance) {
     config.setValueByPath("KindModes/QtApplications", "Plain Preedit");
     config.setValueByPath("KindModes/WaylandApplications",
                           "Input Method Window");
+    config.setValueByPath("KindModes/GtkApplications", "Surrounding Text");
+    config.setValueByPath("KindModes/X11Applications", "Exclude");
     bamboo->setConfig(config);
     RawConfig appModes;
     appModes.setValueByPath("AppMode/0/Program", "ownmode");
@@ -1843,12 +1845,23 @@ void testKindModes(Instance *instance) {
         FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
     }
     {
-        // Left to the default typing mode.
+        // fcitx5-gtk's clients, Chromium on X11 among them.
         FakeEditor editor(instance, "kindgtk", PreeditCaps, true, "dbus");
-        FCITX_ASSERT(mode(editor) == "Telex") << mode(editor);
+        FCITX_ASSERT(mode(editor) == "Telex (Surrounding Text)")
+            << mode(editor);
+    }
+    {
+        FakeEditor editor(instance, "kindx11", PreeditCaps, true, "xim");
+        FCITX_ASSERT(engine->subModeLabel(*entry, editor) == "EN");
+    }
+    for (const char *frontend : {"ibus", "wayland_v2", "fcitx4"}) {
+        // Left to the default typing mode.
+        FakeEditor editor(instance, "kindother", PreeditCaps, true, frontend);
+        FCITX_ASSERT(mode(editor) == "Telex") << frontend << mode(editor);
     }
     for (const char *kind :
-         {"QtTerminals", "QtApplications", "WaylandApplications"}) {
+         {"QtTerminals", "QtApplications", "WaylandApplications",
+          "GtkApplications", "X11Applications"}) {
         config.setValueByPath(stringutils::concat("KindModes/", kind),
                               "Default");
     }
